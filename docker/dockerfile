@@ -1,44 +1,34 @@
-# Basis-Image verwenden
+# Verwende Python 3.13 als Basis-Image
 FROM python:3.13-slim
 
-# Erstelle ein Verzeichnis für die Python-Skripte
-RUN mkdir -p /app /app/logs 
+# Setze das Image-Label für bessere Identifikation
+LABEL maintainer="SirRenix"
+LABEL version="1.0"
+LABEL description="FritzDect2MQTT - MQTT Schnittstelle für Fritz!Dect"
 
-WORKDIR /app
-
-# Systemabhängigkeiten installieren
+# Installiere benötigte Systempakete (ohne SSH)
 RUN apt-get update && apt-get install -y \
-	git \
-    openssh-server \
+    git \
     vim \
     nano \
-    logrotate \
     supervisor \
-    && rm -rf /var/lib/apt/lists/*
+    iputils-ping \
+    logrotate && \
+    apt-get clean
 
-# clone GitHub-Repository
-RUN git clone --branch moonraker-fritz --single-branch https://github.com/SirRenix/FritzDectMQTT.git /app/FritzDectMQTT
+# Setze das Arbeitsverzeichnis auf Root, damit Git das Verzeichnis anlegt
+WORKDIR /
 
-#set work directory for FritzDectMQTT
-WORKDIR /app/FritzDectMQTT
+# Klone das Repository direkt nach /fritzdect2mqtt
+RUN git clone --single-branch --branch moonraker-fritz https://github.com/SirRenix/FritzDect2MQTT.git /fritzdect2mqtt
 
-# Installiere die Python-Abhängigkeiten für FritzDectMQTT aus der geklonten requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Kopiere die aktualisierte Supervisor- und Logrotate-Konfiguration aus dem Docker-Ordner
+COPY /fritzdect2mqtt/docker/supervisord.conf /fritzdect2mqtt/supervisord.conf
+COPY /fritzdect2mqtt/docker/fritzdect2MQTTdocker.logrotate /etc/logrotate.d/fritzdect2MQTTdocker
 
-# copy Logrotate-config
-COPY /docker/fritzdectmqttdocker.logrotate /etc/logrotate.d/fritzdectmqtt
+# Kopiere requirements.txt und installiere Python-Abhängigkeiten
+COPY requirements.txt /fritzdect2mqtt/requirements.txt
+RUN pip install --no-cache-dir -r /fritzdect2mqtt/requirements.txt
 
-# Kopiere Supervisor-Konfiguration
-COPY /docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# SSH Konfiguration
-RUN mkdir /var/run/sshd
-RUN echo 'root:root' | chpasswd
-RUN sed -ri 's/^#?PermitRootLogin\s+.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-RUN sed -ri 's/UsePAM yes/#UsePAM yes/g' /etc/ssh/sshd_config
-
-# Exponierte Ports
-EXPOSE 22
-
-# Starten von Supervisor (mit SSH, logrotate und FritzDectMQTT)
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Standardmäßiger Startbefehl: Supervisor
+CMD ["/bin/sh", "-c", "exec /usr/bin/supervisord -n -c /fritzdect2mqtt/supervisord.conf"]

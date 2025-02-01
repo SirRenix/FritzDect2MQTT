@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  FritzDect2MQTT:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: FritzDect2MQTT:latest  # Benennt das Image korrekt
+    container_name: FritzDect2MQTT  # Setzt den Container-Namen case-sensitive
+    restart: unless-stopped
+    networks:
+      qnap_static_network:
+        ipv4_address: 192.168.xxx.xxx  # Statische IP im QNAP-Netzwerk
+    volumes:
+      - /share/Container/FritzDect2MQTT-container:/fritzdect2mqtt  # Verzeichnis vom Host ins Container mounten
+    environment:
+      - PYTHONUNBUFFERED=1
+    working_dir: /FritzDect2MQTT
+    command: >
+      /bin/sh -c "
+      exec /usr/bin/supervisord -n -c /FritzDect2MQTT/supervisord.conf
+      "
+
+networks:
+  qnap_static_network:
+    external: true
+    name: qnet-static-eth0-0fa2ce
