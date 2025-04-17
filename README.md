@@ -1,6 +1,19 @@
 # FritzDectMQTT
 
+> ⚠️ **Project under active development**  
+> This project – especially the Docker/QNAP integration – is actively evolving.  
+> Documentation and folder structures may change.  
+
+
 [![en](https://img.shields.io/badge/lang-en-red.svg)](README.md) | [![de](https://img.shields.io/badge/lang-de-green.svg)](README.de.md)
+
+## 📦 Overview
+
+This project reads data from **Fritz!DECT smart sockets** connected to a Fritzbox using the **fritzconnection HTTP API** and publishes it to an MQTT broker.  
+
+Originally designed for Raspberry Pi, this project now also supports **Docker-based environments**, including QNAP NAS.
+
+---
 
 ## Changelog
 
@@ -12,22 +25,53 @@ This script reads data from DECT sockets connected to a Fritzbox via the HTTP AP
 
 ---
 
-## Features
+## 🚀 Features
 
-- **MQTT Protocol**: Sends data from connected devices.
-- **Structured Code**: Improved code organization for better maintainability.
-- **Docker Test Environment**: Tested in a Docker container.
-- **Threading**: Parallel processing support.
-- **FritzHomeAutomation**: Basic code for controlling sockets integrated.
-- **Publisher/Subscriber**: Methods for publishing and receiving MQTT messages.
-- **Device Status**: Integrated `GetDeviceStats` for socket information.
-- **Status**: The project is still in the testing phase.
+- 📡 **MQTT Protocol**: Sends DECT socket data via MQTT
+- 🔁 **Reconnection Handling**: Automatically retries MQTT if connection is lost
+- 📦 **Docker Support**: Works with Docker on QNAP NAS or other systems
+- ⚙️ **Supervisor Integration**: Auto-start & auto-restart of the script
+- 🔍 **Healthcheck**: Detects whether the script is running
+- 🧹 **Logrotate**: Prevents logs from growing endlessly
+- 🔧 **Threading**: Background process support
+- 📊 **Device Statistics**: `GetDeviceStats` included
 
 ---
 
+## 📦 Docker-based Installation (Recommended)
+
+### 🔧 Requirements
+
+- Docker & Docker Compose (pre-installed on QNAP via Container Station)
+- Git or manually downloaded repository
+
+---
+
+### 🚀 Quick Start (Docker)
+
+1. Clone the repository:
+   shell or bash
+   git clone --branch dockerqnap https://github.com/SirRenix/FritzDect2MQTT.git
+   cd FritzDect2MQTT
+   
+2. Adjust configdata.cfg and _secrets:
+   Fill in **_secrets.yaml** with Fritzbox credentials and rename to `secrets.yaml`.
+
+3. Build and run:
+   ./scripts/run.sh	
+   
+---
+## 🔎 Logs & Configs
+Mounted folders inside the container:
+
+- /fritzdect2mqtt/logs – All log output
+
+- /fritzdect2mqtt/config – Optional configs, secrets
+
+Logs are rotated daily using logrotate. Docker's internal log size is also limited (10 MB × 5 files).
+
 ## Planned Changes
 
-- English README and multi-language support.
 - Documentation of Docker functionality with an MQTT server.
 - Expand code documentation.
 - Improve error handling to cover more cases.
@@ -37,14 +81,15 @@ This script reads data from DECT sockets connected to a Fritzbox via the HTTP AP
 
 ## Setup Instructions
 
-1. Fill in **_secrets.yaml** with Fritzbox credentials and rename to `secrets.yaml`.
+1. 
 2. [Set up a Python virtual environment](#python-virtual-environment-setup).
 3. [Configure log rotation](#log-rotation).
 4. [Set up as a systemd service for auto-start](#systemd-service-setup).
 
 ---
 
-### Python Virtual Environment Setup
+### 🧪 Manual (non-Docker) Installation (Optional)
+If you prefer running this manually on a Linux machine (e.g. Raspberry Pi), follow these steps:
 
 To create an isolated Python environment for the project:
 
