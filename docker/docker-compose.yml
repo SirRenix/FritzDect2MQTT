@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   FritzDect2MQTT:
-    build: .
+    build: 
+        context: ..
+        dockerfile: docker/Dockerfile
     image: fritzdect2mqtt:dockerqnap
     container_name: FritzDect2MQTT
     restart: unless-stopped  # startet bei Fehlern oder Reboot automatisch neu
