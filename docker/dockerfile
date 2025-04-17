@@ -1,12 +1,8 @@
-# Verwende Python 3.13 als Basis-Image
 FROM python:3.13-slim
 
-# Setze das Image-Label für bessere Identifikation
-LABEL maintainer="SirRenix"
-LABEL version="1.0"
-LABEL description="FritzDect2MQTT - MQTT Schnittstelle für Fritz!Dect"
+LABEL maintainer="Renix"
+LABEL description="FritzDect2MQTT Docker Container"
 
-# Installiere benötigte Systempakete (ohne SSH)
 RUN apt-get update && apt-get install -y \
     git \
     vim \
@@ -16,19 +12,24 @@ RUN apt-get update && apt-get install -y \
     logrotate && \
     apt-get clean
 
-# Setze das Arbeitsverzeichnis auf Root, damit Git das Verzeichnis anlegt
-WORKDIR /
+# Arbeitsverzeichnis
+WORKDIR /fritzdect2mqtt
+COPY . /fritzdect2mqtt
 
-# Klone das Repository direkt nach /fritzdect2mqtt
-RUN git clone --single-branch --branch moonraker-fritz https://github.com/SirRenix/FritzDect2MQTT.git /fritzdect2mqtt
+# Optional: Repository klonen (alternativ vor dem Build manuell tun)
+# RUN git clone --branch moonraker-fritz https://github.com/SirRenix/FritzDect2MQTT.git .
 
-# Kopiere die aktualisierte Supervisor- und Logrotate-Konfiguration aus dem Docker-Ordner
-COPY /fritzdect2mqtt/docker/supervisord.conf /fritzdect2mqtt/supervisord.conf
-COPY /fritzdect2mqtt/docker/fritzdect2MQTTdocker.logrotate /etc/logrotate.d/fritzdect2MQTTdocker
+# Kopiere lokale Konfigs in den Container
+COPY docker/supervisor/supervisord.conf /etc/supervisord.conf
+COPY docker/supervisor/fritzdect2mqtt.conf /etc/supervisor/conf.d/fritzdect2mqtt.conf
 
-# Kopiere requirements.txt und installiere Python-Abhängigkeiten
-COPY requirements.txt /fritzdect2mqtt/requirements.txt
-RUN pip install --no-cache-dir -r /fritzdect2mqtt/requirements.txt
+# Abhängigkeiten installieren
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Standardmäßiger Startbefehl: Supervisor
-CMD ["/bin/sh", "-c", "exec /usr/bin/supervisord -n -c /fritzdect2mqtt/supervisord.conf"]
+# Logrotate config
+COPY docker/logrotate/fritzdect2mqttdocker.logrotate /etc/logrotate.d/fritzdect2mqttdocker
+
+# Logs sollen nicht unendlich wachsen
+ENV PYTHONUNBUFFERED=1
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
