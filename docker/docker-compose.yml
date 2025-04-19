@@ -1,4 +1,4 @@
-version: '3.8'
+name: fritzdect2mqtt
 
 services:
   FritzDect2MQTT:
@@ -26,3 +26,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    networks:
+      dockernet:
+        ipv4_address: ${STATIC_IP}
+ 
+networks:
+  dockernet:
+    external: true
+    name: ${NETWORK_NAME}

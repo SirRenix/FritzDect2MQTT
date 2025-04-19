@@ -1,6 +1,7 @@
 # Secret Files
 mysecrets.h
 secrets.yaml
+.env
 
 *.log.*
 *.bak*

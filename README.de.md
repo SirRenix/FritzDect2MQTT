@@ -52,10 +52,17 @@ Das vollständige Änderungsprotokoll befindet sich [hier](CHANGELOG.md).
 2. Bearbeite configdata.cfg und _secrets.yml:
    bearbeite **_secrets.yaml** mit Fritzbox  login daten, sowie dem MQTT Broker und nenne die datei in `secrets.yaml` um.
    
-3. Erstellen und Ausführen:
-   "sudo sh" oder "bash" ./scripts/run.sh	
+3. 🧭 Netzwerk Konfigiurations Hinweis  
+> The container now uses a fixed internal network name (`dockernet`).  
+> The actual QNAP network (DHCP or static) is selected via `.env` by setting `NETWORK_NAME` and `STATIC_IP`.
+> rename `.env.example` to `.env` 
+> check your interface with `docker network ls`
+> use static or dhcp and change the configuration in .env
+
+4. Build and run:
+   ./scripts/run.sh	
    
-4. optional
+5. optional
    eigenständiger build mit docker compose up -d --build
 
 ##🔎 Logs & Konfiguration

@@ -28,6 +28,9 @@
   - Refactored Dockerfile structure for clarity and reproducibility
   - Reduced COPY usage to essentials only (`supervisor` & `logrotate`)
   - Made GitHub clone optional via comment
+  - add network settings add build process
+  - add internal network name (`dockernet`) in docker-compose.yaml
+  - External QNAP network is now fully configurable via `.env` using `NETWORK_NAME` and optional `STATIC_IP`
 
 ### Fixed
 - Improved compatibility with QNAP’s limited BusyBox shell

@@ -56,9 +56,19 @@ This script reads data from DECT sockets connected to a Fritzbox via the HTTP AP
    
 2. Adjust configdata.cfg and _secrets:
    Fill in **_secrets.yaml** with Fritzbox credentials and rename to `secrets.yaml`.
+   
+3. 🧭 Network Configuration Note  
+> The container now uses a fixed internal network name (`dockernet`).  
+> The actual QNAP network (DHCP or static) is selected via `.env` by setting `NETWORK_NAME` and `STATIC_IP`.
+> rename `.env.example` to `.env` 
+> check your interface with `docker network ls`
+> use static or dhcp and change the configuration in .env
 
-3. Build and run:
+4. Build and run:
    ./scripts/run.sh	
+   
+5. optional
+   standalone build with `docker compose up -d --build`
    
 ---
 ## 🔎 Logs & Configs
