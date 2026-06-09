@@ -147,7 +147,7 @@ def abfrage_fb(mqtt_con):
             selected_ains = get_selected_ains(configuration, switch_identifiers)
 
             for ain in selected_ains:
-                logger.info(f"Querying data for AIN '{ain}'")
+                logger.debug(f"Querying data for AIN '{ain}'")
                 try:
                     mqtt_data = query_switch_data(fc, ain)
                     mqtt_con.sendData(ain, mqtt_data)
