@@ -1,161 +1,119 @@
-# FritzDectMQTT
-
-> ⚠️ **Project under active development**  
-> This project – especially the Docker/QNAP integration – is actively evolving.  
-> Documentation and folder structures may change.  
-
+# FritzDect2MQTT
 
 [![en](https://img.shields.io/badge/lang-en-red.svg)](README.md) | [![de](https://img.shields.io/badge/lang-de-green.svg)](README.de.md)
 
 ## 📦 Overview
 
-This project reads data from **Fritz!DECT smart sockets** connected to a Fritzbox using the **fritzconnection HTTP API** and publishes it to an MQTT broker.  
+This project reads data from **Fritz!DECT smart sockets** connected to a FritzBox via
+the **AHA HTTP API** (using [fritzconnection](https://fritzconnection.readthedocs.io))
+and publishes it to an **MQTT broker**. It can also **switch sockets on/off** via MQTT.
 
-Originally designed for Raspberry Pi, this project now also supports **Docker-based environments**, including QNAP NAS.
+It runs as a small **Docker Compose** service on any Linux host (originally built for a
+Raspberry Pi). A previous variant targeted QNAP NAS — that build path has been removed
+in favour of the simpler Compose setup below.
 
----
-
-## Changelog
-
-You can find the full changelog of this project [here](CHANGELOG.md).
-
----
-
-This script reads data from DECT sockets connected to a Fritzbox via the HTTP API fritzconnection and sends it to an **MQTT Broker**. The project is primarily designed for use on a Raspberry Pi but can be run on any Linux machine with Python 3.10 or higher. Also it is possible to run the script in an Docker Container.
+> Personal/hobby project. The full change history is in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
 ## 🚀 Features
 
-- 📡 **MQTT Protocol**: Sends DECT socket data via MQTT
-- 🔁 **Reconnection Handling**: Automatically retries MQTT if connection is lost
-- 📦 **Docker Support**: Works with Docker on QNAP NAS or other systems
-- ⚙️ **Supervisor Integration**: Auto-start & auto-restart of the script
-- 🔍 **Healthcheck**: Detects whether the script is running
-- 🧹 **Logrotate**: Prevents logs from growing endlessly
-- 🔧 **Threading**: Background process support
-- 📊 **Device Statistics**: `GetDeviceStats` included
+- 📡 **MQTT publish** of per-socket name, temperature, power, energy, voltage, current
+- 🔀 **Switching via MQTT** (`set_switch`) using the AHA HTTP interface
+- 🔁 **Reconnection handling** for the MQTT connection
+- 🔧 **Threading**: querying and command-listening run in parallel
+- 📊 **Device statistics** via `getbasicdevicestats` (voltage / derived current)
+- 🧹 **Log rotation** (app-side `TimedRotatingFileHandler` + Docker `json-file` limits)
 
 ---
 
-## 📦 Docker-based Installation (Recommended)
+## 🔌 MQTT data model
 
-### 🔧 Requirements
+| Direction | Topic | Payload |
+|-----------|-------|---------|
+| publish (state) | `<maintoken>/<FB>/<AIN>` | `{"AIN": "...", "name": "...", "temp": 21.0, "power": 7.46, "allpower": 29.4, "voltage": 233.3, "current": 0.03}` |
+| subscribe (command) | `<cmdtoken>/<FB>/<AIN>` | `{"action": "set_switch", "data": {"AIN": "...", "switchstate": "on"}}` |
 
-- Docker & Docker Compose (pre-installed on QNAP via Container Station)
-- Git or manually downloaded repository
+Defaults: `maintoken = sensor/FB`, `cmdtoken = cmd/FB`, `<FB>` = the `QUERY.FB` name.
+The command tree is intentionally **separate** from the state tree so the client never
+receives its own published messages. `switchstate` accepts `on`/`off`, `true`/`false`,
+`1`/`0` (string or JSON boolean).
 
----
+Example (PowerShell with the mosquitto clients):
 
-### 🚀 Quick Start (Docker)
-
-1. Clone the repository:
-   shell or bash
-   git clone --branch dockerqnap https://github.com/SirRenix/FritzDect2MQTT.git
-   cd FritzDect2MQTT
-   
-2. Adjust configdata.cfg and _secrets:
-   Fill in **_secrets.yaml** with Fritzbox credentials and rename to `secrets.yaml`.
-   
-3. 🧭 Network Configuration Note  
-> The container now uses a fixed internal network name (`dockernet`).  
-> The actual QNAP network (DHCP or static) is selected via `.env` by setting `NETWORK_NAME` and `STATIC_IP`.
-> rename `.env.example` to `.env` 
-> check your interface with `docker network ls`
-> use static or dhcp and change the configuration in .env
-
-4. Build and run:
-   ./scripts/run.sh	
-   
-5. optional
-   standalone build with `docker compose up -d --build`
-   
----
-## 🔎 Logs & Configs
-Mounted folders inside the container:
-
-- /fritzdect2mqtt/logs – All log output
-
-- /fritzdect2mqtt/config – Optional configs, secrets
-
-Logs are rotated daily using logrotate. Docker's internal log size is also limited (10 MB × 5 files).
-
-## Planned Changes
-
-- Documentation of Docker functionality with an MQTT server.
-- Expand code documentation.
-- Improve error handling to cover more cases.
-- Docker install docu (QNAP NAS)
+```powershell
+.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570608608" `
+  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570608608\", \"switchstate\": \"off\"}}'
+```
 
 ---
 
-## Setup Instructions
+## 🐳 Docker installation (recommended)
 
-1. 
-2. [Set up a Python virtual environment](#python-virtual-environment-setup).
-3. [Configure log rotation](#log-rotation).
-4. [Set up as a systemd service for auto-start](#systemd-service-setup).
-
----
-
-### 🧪 Manual (non-Docker) Installation (Optional)
-If you prefer running this manually on a Linux machine (e.g. Raspberry Pi), follow these steps:
-
-To create an isolated Python environment for the project:
+**Requirements:** Docker + Docker Compose v2, and an external Docker network
+(`web_net` by default — see `docker/.env.example`).
 
 ```bash
-#python virtual environment install
+# 1) Get the code onto the Docker host. The compose file mounts this exact path,
+#    so clone it there (or adjust the volume path in docker/compose.yaml).
+sudo git clone https://github.com/SirRenix/FritzDect2MQTT.git /opt/docker-data/fritzdect2mqtt
+cd /opt/docker-data/fritzdect2mqtt
+
+# 2) Credentials: fill in FritzBox + MQTT broker details, then rename.
+cp _secrets.yaml secrets.yaml
+$EDITOR secrets.yaml
+
+# 3) Runtime config: FritzBox name, AINs, looptime, MQTT topics/broker key.
+$EDITOR configdata.cfg
+
+# 4) Environment: set the timezone (and create the network if needed).
+cp docker/.env.example docker/.env
+$EDITOR docker/.env
+docker network create web_net   # only if it does not exist yet
+
+# 5) Start it.
+docker compose -f docker/compose.yaml --env-file docker/.env up -d
+```
+
+Dependencies are installed from `requirements.txt` at container start (no custom
+image is built). Logs:
+
+```bash
+docker compose -f docker/compose.yaml logs -f      # container stdout
+tail -f FritzDectMQTT.log                           # application log
+```
+
+---
+
+## 🧪 Manual installation (without Docker, optional)
+
+Runs on any Linux machine with Python 3.10+:
+
+```bash
 sudo apt-get install python3-venv
-
-#move to project directory
-cd ~/FritzDectMQTT
-
-# virtual environment init
-python -m venv ~/FritzDectMQTT/venv
-
-# activate env
-source ~/FritzDectMQTT/venv/bin/activate
-
-# install dependencies
+cd FritzDect2MQTT
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 
-# modify service
-The path in `fritzdectmqtt.service` - service file must be changed or modified with your username of the system.
+cp _secrets.yaml secrets.yaml   # then edit credentials
+python FritzDect2MQTT.py
+```
+
+To run it permanently, wrap it in a systemd service (or your supervisor of choice)
+that starts `python FritzDect2MQTT.py` from the project directory.
 
 ---
 
-### Logfile-Rotation
-to avoid the computer system being full of log files or large files.
-It is recommended to use logrotate under linux.
+## ⚙️ Configuration (`configdata.cfg`)
 
-install:
-
-    sudo apt install logrotate
-
-copy file ``fritzdectmqtt.logrotate``:
-
-    sudo cp cli/fritzdectmqtt.logrotate /etc/logrotate.d/fritzdectmqtt 
-
----
-
-### Service (systemctl)
-run script as a background service:
-
-# System service copy
-sudo cp cli/fritzdectmqtt.service /etc/systemd/system
-
-# activate
-sudo systemctl enable fritzdectmqtt.service
-
-# start
-sudo systemctl start fritzdectmqtt.service
-
-# check status 
-sudo systemctl status fritzdectmqtt.service
-
-# stop
-sudo systemctl stop fritzdectmqtt.service
-
----
-
-*The project is in an early phase, the error detection is still of a basic quality.*
+| Key | Meaning |
+|-----|---------|
+| `QUERY.FB` | Name of the FritzBox entry in `secrets.yaml` |
+| `QUERY.AINS` | `ALL` or a list of specific AINs to query |
+| `QUERY.looptime` | Seconds between query cycles (default 30; change requires restart) |
+| `MQTT.broker` | Which `MQTT_BROKER` entry in `secrets.yaml` to use (default `RASPI`) |
+| `MQTT.maintoken` | Base topic for published state data |
+| `MQTT.cmdtoken` | Base topic for incoming switch commands |
+| `MQTT.clientId` | MQTT client id |
+| `logging` | Standard Python `logging.config.dictConfig` block |

@@ -1,9 +1,0 @@
-/fritzdect2mqtt/logs/*.log {
-    daily
-    rotate 7
-    compress
-    missingok
-    notifempty
-    create 640 root root
-    sharedscripts
-}

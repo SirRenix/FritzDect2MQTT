@@ -1,5 +1,17 @@
 # Changelog
 
+## Version 1.3.2 – 2026-06-09
+### Changed
+- **Doku & Deployment an die Realität angepasst** (kein QNAP mehr): READMEs (de/en)
+  neu geschrieben — reales Docker-Compose-Setup, MQTT-Datenmodell (State- und
+  Befehls-Topics inkl. `set_switch`), Konfigurationsreferenz. Verweise auf nicht mehr
+  vorhandene `cli/`-Dateien und den `dockerqnap`-Branch entfernt.
+- `docker/compose.yaml` (reales Deployment) ins Repo aufgenommen; `.env.example` auf
+  `TIME_ZONE` + externes Netz reduziert.
+### Removed
+- QNAP-/Supervisor-Build-Artefakte: `docker/Dockerfile`, `docker/supervisor/*`,
+  `docker/logrotate/*`, `docker/docker-compose.yml`, `scripts/run.sh`.
+
 ## Version 1.3.1 – 2026-06-09
 ### Fixed
 - **set_switch schaltet jetzt tatsächlich**: Die Umsetzung über
