@@ -1,58 +1,65 @@
 # Changelog
 
+## Version 1.4.1 – 2026-06-09
+### Changed
+- **Dependency maintenance** (verified against the live FritzBox before release):
+  - Base image pinned to `python:3.14-slim` (floats to the latest 3.14 patch on rebuild;
+    currently 3.14.5, was 3.14.2).
+  - `fritzconnection` bumped `~=1.14.0` → `~=1.15.1`.
+  - `paho-mqtt` (2.1.0) and `PyYAML` (6.0.3) already current.
+
 ## Version 1.4.0 – 2026-06-09
 ### Changed
-- **Image-basiertes Deployment statt Laufzeit-`pip`**: Minimaler `docker/Dockerfile`
-  backt Code, Abhängigkeiten und `configdata.cfg` ein. `docker/compose.yaml` nutzt jetzt
-  `build:` statt Image + Code-Bind-Mount. Kein erneutes `pip install` bei jedem Neustart.
-- **Git-basiertes Deployment (dockhand) eingerichtet und getestet**: Auslieferung über
-  *Deploy from Git* (Build on deploy + Webhook) — `git push` ist die einzige Deploy-Aktion.
-- **`secrets.yaml`** ist die einzige vom Host gemountete Datei (read-only); kommt nie ins
-  Git und nicht ins Image. `TIME_ZONE` über Environment-Variable.
-- **Logging container-nativ nach stdout** (Docker `json-file` rotiert); File-Handler entfernt.
+- **Image-based deployment instead of runtime `pip`**: a minimal `docker/Dockerfile`
+  bakes in the code, dependencies and `configdata.cfg`. `docker/compose.yaml` now uses
+  `build:` instead of a base image + code bind-mount. No more `pip install` on every restart.
+- **Git-based deployment (dockhand) set up and tested**: delivered via *Deploy from Git*
+  (build on deploy + webhook) — `git push` is the only deploy action needed.
+- **`secrets.yaml`** is the only file bind-mounted from the host (read-only); it is never
+  committed to Git and never baked into the image. `TIME_ZONE` is passed as an env var.
+- **Container-native logging to stdout** (rotated by Docker `json-file`); file handler removed.
 ### Docs
-- READMEs (de/en) auf das Image-/Git-Deploy-Modell aktualisiert, inkl. dockhand-Feldwerten.
+- READMEs (de/en) updated for the image/Git-deploy model, including the dockhand field values.
 
 ## Version 1.3.2 – 2026-06-09
 ### Changed
-- **Doku & Deployment an die Realität angepasst** (kein QNAP mehr): READMEs (de/en)
-  neu geschrieben — reales Docker-Compose-Setup, MQTT-Datenmodell (State- und
-  Befehls-Topics inkl. `set_switch`), Konfigurationsreferenz. Verweise auf nicht mehr
-  vorhandene `cli/`-Dateien und den `dockerqnap`-Branch entfernt.
-- `docker/compose.yaml` (reales Deployment) ins Repo aufgenommen; `.env.example` auf
-  `TIME_ZONE` + externes Netz reduziert.
+- **Docs & deployment aligned with reality** (no more QNAP): READMEs (de/en) rewritten —
+  real Docker Compose setup, MQTT data model (state and command topics incl. `set_switch`),
+  configuration reference. Removed references to no-longer-existing `cli/` files and the
+  `dockerqnap` branch.
+- Added the real `docker/compose.yaml` to the repository; reduced `.env.example` to
+  `TIME_ZONE` + external network.
 ### Removed
-- QNAP-/Supervisor-Build-Artefakte: `docker/Dockerfile`, `docker/supervisor/*`,
+- QNAP/Supervisor build artifacts: `docker/Dockerfile`, `docker/supervisor/*`,
   `docker/logrotate/*`, `docker/docker-compose.yml`, `scripts/run.sh`.
 
 ## Version 1.3.1 – 2026-06-09
 ### Fixed
-- **set_switch schaltet jetzt tatsächlich**: Die Umsetzung über
-  `FritzHomeAutomation.set_switch` (TR-064/SOAP) scheiterte mit
-  `UPnPError 402 Invalid Args`. Umgestellt auf das AHA-HTTP-Interface
-  (`setswitchon`/`setswitchoff`), konsistent mit der übrigen Abfrage.
-  End-to-end über MQTT verifiziert (off/on-Toggle).
+- **set_switch now actually switches**: the implementation via
+  `FritzHomeAutomation.set_switch` (TR-064/SOAP) failed with `UPnPError 402 Invalid Args`.
+  Switched to the AHA HTTP interface (`setswitchon`/`setswitchoff`), consistent with the
+  rest of the data polling. Verified end-to-end over MQTT (off/on toggle).
 
 ## Version 1.3.0 – 2026-06-09
 ### Fixed
-- **FritzConnection-Wiederverwendung**: Die Verbindung wird nicht mehr in jedem
-  Abfragezyklus neu aufgebaut, sondern einmal angelegt und wiederverwendet (Neuaufbau
-  nur nach Fehler). Reduziert HTTP-/XML-Churn und damit den Speicherbedarf des Containers.
-- **MQTT-Schaltbefehle (`set_switch`) funktionsfähig**: Subscribe- und Publish-Topics
-  waren inkonsistent (`home/devices/...` vs. `sensor/FB/...`), Befehle kamen nie an.
-  Neues, vom State-Baum getrenntes Kommando-Topic (`cmdtoken`, Default `cmd/FB`).
-  `switchstate` akzeptiert nun JSON-Booleans und Strings; Ausschalten (`false`/`off`)
-  wird nicht mehr fälschlich verworfen.
+- **FritzConnection reuse**: the connection is no longer rebuilt on every query cycle but
+  created once and reused (rebuilt only after an error). Reduces HTTP/XML churn and thus the
+  container's memory footprint.
+- **MQTT switch commands (`set_switch`) made functional**: subscribe and publish topics were
+  inconsistent (`home/devices/...` vs. `sensor/FB/...`), so commands never arrived. Added a
+  dedicated command topic (`cmdtoken`, default `cmd/FB`) separate from the state tree.
+  `switchstate` now accepts JSON booleans and strings; turning off (`false`/`off`) is no
+  longer wrongly rejected.
 
 ### Changed
-- `looptime` Default von 10 auf 30 Sekunden.
-- MQTT-Broker-Eintrag aus `secrets.yaml` über `MQTT.broker` konfigurierbar (Default `RASPI`).
-- Routine-Logs (jede Abfrage / jeder Send) von INFO auf DEBUG → kein unnötiges Logwachstum.
-- `.gitattributes` (`text=auto eol=lf`) gegen wiederkehrende CRLF-Diffs.
+- `looptime` default changed from 10 to 30 seconds.
+- MQTT broker entry in `secrets.yaml` selectable via `MQTT.broker` (default `RASPI`).
+- Routine logs (every query / every send) moved from INFO to DEBUG → no needless log growth.
+- `.gitattributes` (`text=auto eol=lf`) to stop recurring CRLF diffs.
 
 ### Ops
-- Container-RAM: `MALLOC_ARENA_MAX=2`, `MALLOC_TRIM_THRESHOLD_=100000` und `mem_limit`
-  in der Compose-Konfiguration ergänzt.
+- Container RAM: added `MALLOC_ARENA_MAX=2`, `MALLOC_TRIM_THRESHOLD_=100000` and `mem_limit`
+  to the Compose configuration.
 
 ## Version 1.2.0 (dockerqnap branch) – 2025-04-16
 ### Added

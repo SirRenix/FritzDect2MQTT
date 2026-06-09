@@ -4,7 +4,8 @@
 #
 # Build context = repository root (see docker/compose.yaml -> build.context: ..).
 
-FROM python:3.14.2-slim
+# Pinned to the 3.14 minor; rebuilds pick up the latest patch automatically.
+FROM python:3.14-slim
 
 WORKDIR /opt/fritzdect2mqtt
 
