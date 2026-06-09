@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 1.3.1 – 2026-06-09
+### Fixed
+- **set_switch schaltet jetzt tatsächlich**: Die Umsetzung über
+  `FritzHomeAutomation.set_switch` (TR-064/SOAP) scheiterte mit
+  `UPnPError 402 Invalid Args`. Umgestellt auf das AHA-HTTP-Interface
+  (`setswitchon`/`setswitchoff`), konsistent mit der übrigen Abfrage.
+  End-to-end über MQTT verifiziert (off/on-Toggle).
+
 ## Version 1.3.0 – 2026-06-09
 ### Fixed
 - **FritzConnection-Wiederverwendung**: Die Verbindung wird nicht mehr in jedem
