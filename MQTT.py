@@ -14,6 +14,12 @@ class MQTT:
         self.mqttSecData = SecretData["MQTT_BROKER"]["RASPI"]
         self.fritzbox = ConfigData["QUERY"]["FB"]
 
+        # Command topic for incoming switch commands. Kept separate from the
+        # state/publish tree (maintoken) so the client does not receive its own
+        # published messages back (which would be parsed as invalid commands).
+        cmd_token = self.mqttConfData.get("cmdtoken", "cmd/FB")
+        self.cmd_topic = f"{cmd_token}/{self.fritzbox}/#"
+
         self.logger = logging.getLogger(__name__)
 
         self.MQTTClient = mqttClient.Client(client_id=self.mqttConfData["clientId"])
@@ -29,7 +35,8 @@ class MQTT:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connected to MQTT Broker")
-            client.subscribe("home/devices/MyFritzBox/#")
+            client.subscribe(self.cmd_topic)
+            self.logger.info(f"Subscribed to command topic '{self.cmd_topic}'")
         else:
             self.logger.error(f"Failed to connect to MQTT Broker, return code {rc}")
 
