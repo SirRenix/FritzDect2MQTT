@@ -23,7 +23,7 @@ in favour of the simpler Compose setup below.
 - 🔁 **Reconnection handling** for the MQTT connection
 - 🔧 **Threading**: querying and command-listening run in parallel
 - 📊 **Device statistics** via `getbasicdevicestats` (voltage / derived current)
-- 🧹 **Log rotation** (app-side `TimedRotatingFileHandler` + Docker `json-file` limits)
+- 🧹 **Container-native logging** to stdout, rotated by Docker (`json-file`)
 
 ---
 
@@ -50,37 +50,50 @@ Example (PowerShell with the mosquitto clients):
 
 ## 🐳 Docker installation (recommended)
 
-**Requirements:** Docker + Docker Compose v2, and an external Docker network
-(`web_net` by default — see `docker/.env.example`).
+The image bakes in the code, dependencies and `configdata.cfg` (see
+[`docker/Dockerfile`](docker/Dockerfile)). **Only `secrets.yaml` is mounted from the
+host** — it must never be committed to Git. `TIME_ZONE` is passed as an environment
+variable; the container joins an external Docker network (`web_net` by default).
+
+**Prepare the secret on the Docker host** (once):
 
 ```bash
-# 1) Get the code onto the Docker host. The compose file mounts this exact path,
-#    so clone it there (or adjust the volume path in docker/compose.yaml).
-sudo git clone https://github.com/SirRenix/FritzDect2MQTT.git /opt/docker-data/fritzdect2mqtt
-cd /opt/docker-data/fritzdect2mqtt
-
-# 2) Credentials: fill in FritzBox + MQTT broker details, then rename.
-cp _secrets.yaml secrets.yaml
-$EDITOR secrets.yaml
-
-# 3) Runtime config: FritzBox name, AINs, looptime, MQTT topics/broker key.
-$EDITOR configdata.cfg
-
-# 4) Environment: set the timezone (and create the network if needed).
-cp docker/.env.example docker/.env
-$EDITOR docker/.env
-docker network create web_net   # only if it does not exist yet
-
-# 5) Start it.
-docker compose -f docker/compose.yaml --env-file docker/.env up -d
+sudo mkdir -p /opt/docker-data/fritzdect2mqtt
+# create /opt/docker-data/fritzdect2mqtt/secrets.yaml from _secrets.yaml in this repo
+sudo $EDITOR /opt/docker-data/fritzdect2mqtt/secrets.yaml
+sudo chmod 600 /opt/docker-data/fritzdect2mqtt/secrets.yaml
+docker network create web_net    # only if it does not exist yet
 ```
 
-Dependencies are installed from `requirements.txt` at container start (no custom
-image is built). Logs:
+### Option A — Git deploy via dockhand (recommended, this is what is tested)
+
+This project is **deployed and tested with [dockhand](https://github.com/fnsys/dockhand)**
+using its *Deploy from Git* feature, so a `git push` is the only action needed to roll
+out a change:
+
+| Field | Value |
+|-------|-------|
+| Repository URL | `https://github.com/SirRenix/FritzDect2MQTT.git` |
+| Branch | `main` |
+| Credential | `None (public)` |
+| Compose file path | `docker/compose.yaml` |
+| Build images on deploy | **on** |
+| Enable webhook | on (point your GitHub webhook at the dockhand URL) |
+| Environment variable | `TIME_ZONE=Europe/Berlin` |
+
+### Option B — plain Docker Compose
 
 ```bash
-docker compose -f docker/compose.yaml logs -f      # container stdout
-tail -f FritzDectMQTT.log                           # application log
+git clone https://github.com/SirRenix/FritzDect2MQTT.git
+cd FritzDect2MQTT
+TIME_ZONE=Europe/Berlin docker compose -f docker/compose.yaml up -d --build
+```
+
+Logs go to stdout and are captured/rotated by Docker (`json-file`, 10 MB × 3):
+
+```bash
+docker compose -f docker/compose.yaml logs -f
+# or:  docker logs -f fritzdect2mqtt
 ```
 
 ---

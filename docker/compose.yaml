@@ -1,36 +1,35 @@
-# Reale Deployment-Konfiguration (Docker Compose auf einem Linux-Host).
-# Entspricht dem produktiv laufenden Stack. Der Code wird per Bind-Mount
-# eingebunden; Abhaengigkeiten werden beim Start aus requirements.txt
-# installiert (kein eigenes Image noetig).
+# Deployment via Docker Compose, designed for Git-based deploy in dockhand
+# (build images on deploy). Code + dependencies come from the image (see
+# docker/Dockerfile); only the secret file is bind-mounted from the host.
 #
-# Voraussetzungen:
+# Requirements:
 #   - Docker + Docker Compose v2
-#   - .env mit TIME_ZONE (siehe .env.example)
-#   - ein externes Docker-Netzwerk (hier: web_net) ODER diesen Block anpassen
-#   - Projektcode + secrets.yaml im unten gemounteten Host-Verzeichnis
+#   - TIME_ZONE provided via environment (dockhand env panel) or an env file
+#   - external Docker network (here: web_net) or adjust the networks block
+#   - secrets.yaml present at the host path mounted below
 
 services:
   fritzdect2mqtt:
-    image: python:3.14.2-slim
+    build:
+      context: ..                  # repository root
+      dockerfile: docker/Dockerfile
+    image: fritzdect2mqtt:local
     container_name: fritzdect2mqtt
     restart: unless-stopped
-    mem_limit: 128m                      # Guardrail (Normalbetrieb ~40-70 MB)
+    mem_limit: 128m                # guardrail (normal operation ~40-70 MB)
     networks:
       - web_net
     working_dir: /opt/fritzdect2mqtt
     volumes:
-      - /opt/docker-data/fritzdect2mqtt:/opt/fritzdect2mqtt:rw   # Projektcode + secrets.yaml
+      # Only the secret stays on the host (never committed to Git, not baked
+      # into the image). Everything else comes from the image.
+      - /opt/docker-data/fritzdect2mqtt/secrets.yaml:/opt/fritzdect2mqtt/secrets.yaml:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
       - TZ=${TIME_ZONE}
-      - MALLOC_ARENA_MAX=2               # begrenzt glibc-malloc-Arenen (RAM)
-      - MALLOC_TRIM_THRESHOLD_=100000    # gibt freigegebenen Speicher ans OS zurueck
-    command: >
-      sh -c "
-      pip install --no-cache-dir -r requirements.txt &&
-      python FritzDect2MQTT.py
-      "
+      - MALLOC_ARENA_MAX=2
+      - MALLOC_TRIM_THRESHOLD_=100000
     logging:
       driver: "json-file"
       options:

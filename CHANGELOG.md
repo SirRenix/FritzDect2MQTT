@@ -1,5 +1,18 @@
 # Changelog
 
+## Version 1.4.0 – 2026-06-09
+### Changed
+- **Image-basiertes Deployment statt Laufzeit-`pip`**: Minimaler `docker/Dockerfile`
+  backt Code, Abhängigkeiten und `configdata.cfg` ein. `docker/compose.yaml` nutzt jetzt
+  `build:` statt Image + Code-Bind-Mount. Kein erneutes `pip install` bei jedem Neustart.
+- **Git-basiertes Deployment (dockhand) eingerichtet und getestet**: Auslieferung über
+  *Deploy from Git* (Build on deploy + Webhook) — `git push` ist die einzige Deploy-Aktion.
+- **`secrets.yaml`** ist die einzige vom Host gemountete Datei (read-only); kommt nie ins
+  Git und nicht ins Image. `TIME_ZONE` über Environment-Variable.
+- **Logging container-nativ nach stdout** (Docker `json-file` rotiert); File-Handler entfernt.
+### Docs
+- READMEs (de/en) auf das Image-/Git-Deploy-Modell aktualisiert, inkl. dockhand-Feldwerten.
+
 ## Version 1.3.2 – 2026-06-09
 ### Changed
 - **Doku & Deployment an die Realität angepasst** (kein QNAP mehr): READMEs (de/en)
