@@ -78,9 +78,16 @@ Dieses Projekt wird mit [dockhand](https://github.com/fnsys/dockhand) über dess
 | Branch | `main` |
 | Credential | `None (public)` |
 | Compose file path | `docker/compose.yaml` |
+| **Context directory** | **`.`** (Repo-Root — **erforderlich**) |
 | Build images on deploy | **an** |
 | Enable webhook | an (GitHub-Webhook auf die dockhand-URL zeigen lassen) |
 | Environment variable | `TIME_ZONE=Europe/Berlin` |
+
+> ⚠️ **„Context directory" auf `.` setzen** — sonst nimmt dockhand das Verzeichnis der
+> Compose-Datei (`docker/`) als Build-Context und findet die App-Dateien im Repo-Root
+> (`requirements.txt`, `*.py`) nicht → Build bricht mit
+> `lstat .../docker: no such file or directory` ab. Mit `.` ist das gesamte Repo der
+> Build-Context und `build.context: ..` in `docker/compose.yaml` löst korrekt auf.
 
 ### Variante B — reines Docker Compose
 

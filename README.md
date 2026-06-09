@@ -77,9 +77,16 @@ out a change:
 | Branch | `main` |
 | Credential | `None (public)` |
 | Compose file path | `docker/compose.yaml` |
+| **Context directory** | **`.`** (repository root — **required**) |
 | Build images on deploy | **on** |
 | Enable webhook | on (point your GitHub webhook at the dockhand URL) |
 | Environment variable | `TIME_ZONE=Europe/Berlin` |
+
+> ⚠️ **Set _Context directory_ to `.`** — without it dockhand uses the compose file's
+> directory (`docker/`) as the build context, so the build cannot find the app files at
+> the repository root (`requirements.txt`, `*.py`) and fails with
+> `lstat .../docker: no such file or directory`. With `.` the whole repo is the build
+> context and `build.context: ..` in `docker/compose.yaml` resolves correctly.
 
 ### Option B — plain Docker Compose
 
