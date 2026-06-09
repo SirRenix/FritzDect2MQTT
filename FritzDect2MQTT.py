@@ -24,7 +24,6 @@ import threading
 
 # from fritzconnection import FritzConnection                        # TR-064
 from fritzconnection.core.fritzconnection import FritzConnection  # HTML
-from fritzconnection.lib.fritzhomeauto import FritzHomeAutomation
 from fritzconnection.core.exceptions import FritzServiceError, FritzHttpInterfaceError, FritzAuthorizationError
 
 import MQTT
@@ -219,13 +218,17 @@ def handle_set_switch(ain: str, switchstate):
     try:
         logger.debug(f"Sending switchstate: {target}")
 
-        # Verbinde zur FritzBox und ändere den Schalterzustand
+        # Verbinde zur FritzBox und ändere den Schalterzustand über das
+        # AHA-HTTP-Interface (konsistent mit der restlichen Abfrage). Die
+        # TR-064/SOAP-Variante (FritzHomeAutomation.set_switch) liefert hier
+        # 'UPnPError 402 Invalid Args'.
         fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
         fc = connect_to_fritzbox(fb_config)
-        fh = FritzHomeAutomation(fc)
 
+        command = "setswitchon" if target else "setswitchoff"
         logger.info(f"Switching AIN {ain} {'on' if target else 'off'}")
-        fh.set_switch(ain, on=target)
+        result = fc.call_http(command, ain)
+        logger.debug(f"FritzBox response: {result.get('content', '').strip()}")
 
     except Exception as e:
         logger.error(f"Error setting switch: {e}")
