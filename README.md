@@ -16,6 +16,21 @@ in favour of the simpler Compose setup below.
 
 ---
 
+## 🎯 Background & goal
+
+This project was created to connect Fritz!DECT power sockets to a **Voron 3D printer**
+running **Klipper / Moonraker / Mainsail**. The goals are:
+
+1. **History values in the database** — record the socket's consumption (power/energy) so it
+   is stored alongside Moonraker's job history table.
+2. **Live display in Mainsail** — show the socket's current stats (power draw, voltage,
+   current, temperature) directly in the Mainsail web UI.
+
+Both are achieved by publishing the socket data to MQTT (this project) and consuming it on
+the Moonraker side via its `[mqtt]`, `[sensor]` and `[power]` integrations.
+
+---
+
 ## 🚀 Features
 
 - 📡 **MQTT publish** of per-socket name, temperature, power, energy, voltage, current

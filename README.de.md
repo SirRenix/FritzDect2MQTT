@@ -18,6 +18,21 @@ entfernt.
 
 ---
 
+## 🎯 Hintergrund & Ziel
+
+Das Projekt ist entstanden, um Fritz!DECT-Steckdosen an einen **Voron-3D-Drucker** mit
+**Klipper / Moonraker / Mainsail** anzubinden. Die Ziele:
+
+1. **History-Werte in der Datenbank** — den Verbrauch der Steckdose (Leistung/Energie)
+   erfassen und zusammen mit Moonrakers Job-History-Tabelle ablegen.
+2. **Live-Anzeige in Mainsail** — die aktuellen Steckdosen-Werte (Verbrauch, Spannung,
+   Strom, Temperatur) direkt in der Mainsail-Weboberfläche anzeigen.
+
+Beides wird erreicht, indem dieses Projekt die Steckdosendaten nach MQTT veröffentlicht und
+Moonraker sie über seine `[mqtt]`-, `[sensor]`- und `[power]`-Integration konsumiert.
+
+---
+
 ## 🚀 Funktionen
 
 - 📡 **MQTT-Veröffentlichung** je Steckdose: Name, Temperatur, Leistung, Energie, Spannung, Strom
