@@ -1,12 +1,14 @@
 # coding: utf8
 
-"""
-# https://fritzconnection.readthedocs.io/en/1.13.2/sources/getting_started.html
+r"""
+https://fritzconnection.readthedocs.io/en/1.13.2/sources/getting_started.html
+AHA-HTTP-Interface: https://avm.de/fileadmin/user_upload/Global/Service/Schnittstellen/AHA-HTTP-Interface.pdf
 
-# chrome-extension://gphandlahdpffmccakmbngmbjnjiiahp/https://avm.de/fileadmin/user_upload/Global/Service/Schnittstellen/AHA
-# -HTTP-Interface.pdf
-powershellcommand:
- .\mosquitto_pub.exe -h 192.168.xxx.xxx -p 1883 -t "home/devices/MyFritzBox/123456789" -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"123456789\",\"switchstate\": \"True\"}}'
+State data is published to:   <maintoken>/<FB>/<AIN>   e.g. sensor/FB/MyFritzbox/123456789
+Switch commands are read on:  <cmdtoken>/<FB>/<AIN>   e.g. cmd/FB/MyFritzbox/123456789
+
+Example (PowerShell, mosquitto clients):
+  .\mosquitto_pub.exe -h 192.168.xxx.xxx -p 1883 -t "cmd/FB/MyFritzbox/123456789" -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"123456789\", \"switchstate\": \"on\"}}'
   .\mosquitto_sub.exe -h 192.168.xxx.xxx -p 1883 -t "#" -v
 """
 
@@ -121,22 +123,31 @@ def parse_device_stats(xml_data: str, data: dict):
         data["voltage_err"] = "NA"
 
 def abfrage_fb(mqtt_con):
-    """Main function to query FritzBox and send data via MQTT."""
+    """Main function to query FritzBox and send data via MQTT.
+
+    The FritzConnection is created once and reused across loop iterations.
+    It is only rebuilt (fc = None -> reconnect) after a connection/service
+    error. This avoids rebuilding the HTTP session and re-parsing the
+    device description on every cycle.
+    """
+    fc = None
     while True:
         try:
-            if not mqtt_con.MQTTClient.is_connected():  
-                logger.warning("MQTT not connected. Reconnecting...")
+            if not mqtt_con.MQTTClient.is_connected():
+                logger.warning("MQTT not connected. Waiting before retry...")
                 time.sleep(5) # wait 5 seconds and try again
                 continue
 
-            fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
-            fc = connect_to_fritzbox(fb_config)
+            if fc is None:
+                fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
+                fc = connect_to_fritzbox(fb_config)
+                logger.info("FritzBox connection established")
 
             switch_identifiers = parse_switch_list(fc)
             selected_ains = get_selected_ains(configuration, switch_identifiers)
 
             for ain in selected_ains:
-                logger.info(f"Querying data for AIN '{ain}'")
+                logger.debug(f"Querying data for AIN '{ain}'")
                 try:
                     mqtt_data = query_switch_data(fc, ain)
                     mqtt_con.sendData(ain, mqtt_data)
@@ -146,62 +157,75 @@ def abfrage_fb(mqtt_con):
         except FritzServiceError as fbexp:
             logger.error(f"FritzServiceError: {fbexp}")
             logger.info("Reconnecting to FritzBox in 60sec...")
+            fc = None  # force a fresh connection on the next cycle
             time.sleep(60)
-            
+
         except Exception as e:
             logger.error(f"Error querying FritzBox: {e}")
             logger.info("Reconnecting to FritzBox in 60sec...")
+            fc = None  # force a fresh connection on the next cycle
             time.sleep(60)
 
-        looptime = configuration.get("QUERY", {}).get("looptime", 10) 
+        looptime = configuration.get("QUERY", {}).get("looptime", 10)
         time.sleep(looptime)
 
 def action_handler(action_type, data):
+    """Dispatch an action received via MQTT."""
     if action_type == "set_switch":
         ain = data.get("AIN")
         switchstate = data.get("switchstate")
 
-        if ain and switchstate:
-            # Logik zum Schalten des Geräts mit AIN
-            print(f"Setting switch for AIN {ain} to {switchstate}")
+        # switchstate may legitimately be False/"off" -> check for presence,
+        # not truthiness.
+        if ain and switchstate is not None:
+            logger.info(f"Setting switch for AIN {ain} to {switchstate}")
             handle_set_switch(ain, switchstate)
-            # Hier die eigentliche Schaltlogik hinzufügen
         else:
-            print("AIN or switchstate missing in the data.")
+            logger.error("AIN or switchstate missing in the data.")
     else:
-        print(f"Unknown action type '{action_type}' received.")
-        
-    # """Handle specific actions received from MQTT."""
-    # print(f"Received action '{action_type}' with data: {data}")
-    # if action_type == "set_switch":
-    #     handle_set_switch(data)
-    # elif action_type == "log_message":
-    #     handle_log_message(data)
-    # else:
-    #     print(f"Unknown action type '{action_type}' received.")
+        logger.warning(f"Unknown action type '{action_type}' received.")
 
-def handle_set_switch(ain: str, switchstate: str):
+def _parse_switchstate(switchstate) -> bool:
+    """Normalize a switchstate from MQTT into a bool.
+
+    Accepts JSON booleans (true/false) as well as common strings
+    ("True"/"on"/"1" -> on, "False"/"off"/"0" -> off). Raises ValueError
+    for anything unrecognized.
+    """
+    if isinstance(switchstate, bool):
+        return switchstate
+    value = str(switchstate).strip().lower()
+    if value in ("true", "on", "1"):
+        return True
+    if value in ("false", "off", "0"):
+        return False
+    raise ValueError(f"Unrecognized switchstate: {switchstate!r}")
+
+
+def handle_set_switch(ain: str, switchstate):
     """Handle the 'set_switch' action."""
-    logger.info(f"Handling 'set_switch' action.AIN: {ain} switchstate: {switchstate}")
+    logger.info(f"Handling 'set_switch' action. AIN: {ain} switchstate: {switchstate}")
 
-    if not isinstance(ain, str) or not isinstance(switchstate, str):
-        logger.error("Invalid AIN or switchstate type.")
+    if not isinstance(ain, str) or not ain:
+        logger.error("Invalid AIN.")
         return
 
     try:
-        logger.debug(f"Sending switchstate: {switchstate}")
-       
+        target = _parse_switchstate(switchstate)
+    except ValueError as e:
+        logger.error(str(e))
+        return
+
+    try:
+        logger.debug(f"Sending switchstate: {target}")
+
         # Verbinde zur FritzBox und ändere den Schalterzustand
         fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
         fc = connect_to_fritzbox(fb_config)
         fh = FritzHomeAutomation(fc)
 
-        if switchstate== "True" or switchstate == "on":
-            logger.info(f"Switching AIN {ain} on")
-            fh.set_switch(ain, on=True)
-        elif switchstate == "False" or switchstate == "off":
-            logger.info(f"Switching AIN {ain} off")
-            fh.set_switch(ain, on=False)
+        logger.info(f"Switching AIN {ain} {'on' if target else 'off'}")
+        fh.set_switch(ain, on=target)
 
     except Exception as e:
         logger.error(f"Error setting switch: {e}")

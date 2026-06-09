@@ -11,8 +11,17 @@ class MQTT:
         assert (SecretData is not None), "No secret data given"
 
         self.mqttConfData = ConfigData["MQTT"]
-        self.mqttSecData = SecretData["MQTT_BROKER"]["RASPI"]
+        # Which broker entry under MQTT_BROKER in secrets.yaml to use.
+        # Configurable via MQTT.broker, defaults to "RASPI" for compatibility.
+        broker_key = self.mqttConfData.get("broker", "RASPI")
+        self.mqttSecData = SecretData["MQTT_BROKER"][broker_key]
         self.fritzbox = ConfigData["QUERY"]["FB"]
+
+        # Command topic for incoming switch commands. Kept separate from the
+        # state/publish tree (maintoken) so the client does not receive its own
+        # published messages back (which would be parsed as invalid commands).
+        cmd_token = self.mqttConfData.get("cmdtoken", "cmd/FB")
+        self.cmd_topic = f"{cmd_token}/{self.fritzbox}/#"
 
         self.logger = logging.getLogger(__name__)
 
@@ -29,7 +38,8 @@ class MQTT:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.logger.info("Connected to MQTT Broker")
-            client.subscribe("home/devices/MyFritzBox/#")
+            client.subscribe(self.cmd_topic)
+            self.logger.info(f"Subscribed to command topic '{self.cmd_topic}'")
         else:
             self.logger.error(f"Failed to connect to MQTT Broker, return code {rc}")
 
@@ -80,17 +90,13 @@ class MQTT:
         result = self.MQTTClient.publish(currentTopic, sendString)
 
         if result[0] == 0:
-            self.logger.info(f"Sent '{sendString}' to {self.mqttSecData['ip']}:{self.mqttSecData['port']} with topic '{currentTopic}'")
+            self.logger.debug(f"Sent '{sendString}' to {self.mqttSecData['ip']}:{self.mqttSecData['port']} with topic '{currentTopic}'")
         else:
             self.logger.error(f"Failed to send message to topic '{currentTopic}'")
 
     def receiveData(self, client, userdata, message):
         raw_payload = message.payload.decode("utf-8")
-        print(f"topic {message.topic}: Raw received payload: {raw_payload}")
-        self.logger.debug(f"Received raw payload: {raw_payload}")
-    
-        #self.logger.debug(f"Received message on topic {message.topic}: {message.payload.decode('utf-8')}")
-        #print(f"Received message on topic {message.topic}: {message.payload.decode('utf-8')}")
+        self.logger.debug(f"Received on topic {message.topic}: {raw_payload}")
 
         try:
             payload = json.loads(raw_payload)

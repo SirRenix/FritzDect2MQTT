@@ -1,0 +1,6 @@
+# Normalize line endings: store text files with LF in the repository.
+# Prevents the recurring whole-file "modified" diff on configdata.cfg etc.
+* text=auto eol=lf
+
+# Shell scripts must stay LF (they run inside Linux containers).
+*.sh text eol=lf

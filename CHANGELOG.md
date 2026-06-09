@@ -1,5 +1,26 @@
 # Changelog
 
+## Version 1.3.0 – 2026-06-09
+### Fixed
+- **FritzConnection-Wiederverwendung**: Die Verbindung wird nicht mehr in jedem
+  Abfragezyklus neu aufgebaut, sondern einmal angelegt und wiederverwendet (Neuaufbau
+  nur nach Fehler). Reduziert HTTP-/XML-Churn und damit den Speicherbedarf des Containers.
+- **MQTT-Schaltbefehle (`set_switch`) funktionsfähig**: Subscribe- und Publish-Topics
+  waren inkonsistent (`home/devices/...` vs. `sensor/FB/...`), Befehle kamen nie an.
+  Neues, vom State-Baum getrenntes Kommando-Topic (`cmdtoken`, Default `cmd/FB`).
+  `switchstate` akzeptiert nun JSON-Booleans und Strings; Ausschalten (`false`/`off`)
+  wird nicht mehr fälschlich verworfen.
+
+### Changed
+- `looptime` Default von 10 auf 30 Sekunden.
+- MQTT-Broker-Eintrag aus `secrets.yaml` über `MQTT.broker` konfigurierbar (Default `RASPI`).
+- Routine-Logs (jede Abfrage / jeder Send) von INFO auf DEBUG → kein unnötiges Logwachstum.
+- `.gitattributes` (`text=auto eol=lf`) gegen wiederkehrende CRLF-Diffs.
+
+### Ops
+- Container-RAM: `MALLOC_ARENA_MAX=2`, `MALLOC_TRIM_THRESHOLD_=100000` und `mem_limit`
+  in der Compose-Konfiguration ergänzt.
+
 ## Version 1.2.0 (dockerqnap branch) – 2025-04-16
 ### Added
 - **Docker Support for QNAP**:
