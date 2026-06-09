@@ -121,16 +121,25 @@ def parse_device_stats(xml_data: str, data: dict):
         data["voltage_err"] = "NA"
 
 def abfrage_fb(mqtt_con):
-    """Main function to query FritzBox and send data via MQTT."""
+    """Main function to query FritzBox and send data via MQTT.
+
+    The FritzConnection is created once and reused across loop iterations.
+    It is only rebuilt (fc = None -> reconnect) after a connection/service
+    error. This avoids rebuilding the HTTP session and re-parsing the
+    device description on every cycle.
+    """
+    fc = None
     while True:
         try:
-            if not mqtt_con.MQTTClient.is_connected():  
-                logger.warning("MQTT not connected. Reconnecting...")
+            if not mqtt_con.MQTTClient.is_connected():
+                logger.warning("MQTT not connected. Waiting before retry...")
                 time.sleep(5) # wait 5 seconds and try again
                 continue
 
-            fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
-            fc = connect_to_fritzbox(fb_config)
+            if fc is None:
+                fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
+                fc = connect_to_fritzbox(fb_config)
+                logger.info("FritzBox connection established")
 
             switch_identifiers = parse_switch_list(fc)
             selected_ains = get_selected_ains(configuration, switch_identifiers)
@@ -146,14 +155,16 @@ def abfrage_fb(mqtt_con):
         except FritzServiceError as fbexp:
             logger.error(f"FritzServiceError: {fbexp}")
             logger.info("Reconnecting to FritzBox in 60sec...")
+            fc = None  # force a fresh connection on the next cycle
             time.sleep(60)
-            
+
         except Exception as e:
             logger.error(f"Error querying FritzBox: {e}")
             logger.info("Reconnecting to FritzBox in 60sec...")
+            fc = None  # force a fresh connection on the next cycle
             time.sleep(60)
 
-        looptime = configuration.get("QUERY", {}).get("looptime", 10) 
+        looptime = configuration.get("QUERY", {}).get("looptime", 10)
         time.sleep(looptime)
 
 def action_handler(action_type, data):
