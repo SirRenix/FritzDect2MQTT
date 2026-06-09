@@ -3,6 +3,9 @@ mysecrets.h
 secrets.yaml
 .env
 
+# Local project notes (host-specific details, not for the public repo)
+_project-notes/
+
 *.log.*
 *.bak*
 
