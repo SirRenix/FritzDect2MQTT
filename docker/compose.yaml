@@ -11,7 +11,7 @@
 
 services:
   fritzdect2mqtt:
-    image: python:3.14-slim
+    image: python:3.14.2-slim
     container_name: fritzdect2mqtt
     restart: unless-stopped
     mem_limit: 128m                      # Guardrail (Normalbetrieb ~40-70 MB)
