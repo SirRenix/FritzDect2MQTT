@@ -1,5 +1,7 @@
 r"""
-https://fritzconnection.readthedocs.io/en/1.13.2/sources/getting_started.html
+FritzDect2MQTT - poll Fritz!DECT smart sockets via the AHA HTTP interface and publish to MQTT.
+
+https://fritzconnection.readthedocs.io/en/latest/sources/getting_started.html
 AHA-HTTP-Interface: https://avm.de/fileadmin/user_upload/Global/Service/Schnittstellen/AHA-HTTP-Interface.pdf
 
 State data is published to:   <maintoken>/<FB>/<AIN>   e.g. sensor/FB/MyFritzbox/123456789
@@ -11,130 +13,157 @@ Example (PowerShell, mosquitto clients):
   .\mosquitto_sub.exe -h 192.168.xxx.xxx -p 1883 -t "#" -v
 """
 
-
-import os
-import time
-
-import yaml
 import logging.config
-from logging import Logger
-import xml.etree.ElementTree as ET
+import os
 import threading
+import time
+import xml.etree.ElementTree as ET
+from logging import Logger
 
-# from fritzconnection import FritzConnection                        # TR-064
-from fritzconnection.core.fritzconnection import FritzConnection  # HTML
-from fritzconnection.core.exceptions import FritzServiceError, FritzHttpInterfaceError, FritzAuthorizationError
+import requests
+import yaml
+from fritzconnection.core.exceptions import (
+    FritzAuthorizationError,
+    FritzConnectionException,
+    FritzHttpInterfaceError,
+)
+from fritzconnection.core.fritzconnection import FritzConnection
 
 import MQTT
 
 CONFIG_FILE_NAME_YAML = "configdata.cfg"
 SECRETS_FILE_NAME_YAML = "secrets.yaml"
 
-# --- Globals ---
+# HTTP timeout (seconds) for every call to the FritzBox. Without it a hanging
+# box would block the poll thread forever.
+FRITZBOX_TIMEOUT = 10
+# Back-off after a connection/service error resp. after an authorization
+# error (the latter is long on purpose: the FritzBox locks the login after
+# repeated failures, and a wrong password does not fix itself).
+RETRY_DELAY_ERROR = 60
+RETRY_DELAY_AUTH = 300
+MQTT_WAIT_DELAY = 5
+
+# Errors that concern a single device / response and must not abort the
+# whole query cycle (the other AINs are still queried).
+PER_AIN_ERRORS = (FritzHttpInterfaceError, ET.ParseError, ValueError, AttributeError, KeyError)
+
+# --- Globals (set once in main(), read-only afterwards -> safe for both threads) ---
 configuration: dict
 secrets: dict
 logger: Logger
 
-#load yaml file
-def load_config_file(file_name):
+
+def load_config_file(file_name: str) -> dict:
+    """Load a YAML file."""
     if not os.path.exists(file_name):
-        raise NameError(f"File '{file_name}' is not accessible.")
+        raise FileNotFoundError(f"File '{file_name}' is not accessible.")
     with open(file_name, encoding="utf-8") as f:
         return yaml.safe_load(f.read())
 
-def init_logging(config: str) -> Logger:
+
+def init_logging(config: dict) -> Logger:
     """Initialize logging from configuration."""
     if "logging" not in config:
-        raise Exception(f"No logging configuration in configuration file '{CONFIG_FILE_NAME_YAML}' available.")
+        raise ValueError(f"No logging configuration in configuration file '{CONFIG_FILE_NAME_YAML}' available.")
     logging.config.dictConfig(config["logging"])
     return logging.getLogger("__main__")
 
-def connect_to_fritzbox(fb_config: dict, max_tries: int = 10) -> FritzConnection:
-    """Attempt to connect to the FritzBox, retrying on authorization errors."""
-    connection_attempts = 0
-    while connection_attempts < max_tries:
-        try:
-            return FritzConnection(
-                address=fb_config["ip"],
-                user=fb_config["user"],
-                password=fb_config["password"],
-                use_cache=True
-            )
-        except FritzAuthorizationError as fae:
-            connection_attempts += 1
-            logger.debug(f"Connection attempt {connection_attempts} failed: {fae}")
-    raise FritzAuthorizationError("Max connection attempts reached.")
+
+def connect_to_fritzbox(fb_config: dict) -> FritzConnection:
+    """Create a FritzConnection.
+
+    Authorization errors are *not* retried here: a wrong password does not
+    fix itself and repeated attempts trigger the FritzBox login lock-out.
+    The caller decides how long to wait before trying again.
+    """
+    return FritzConnection(
+        address=fb_config["ip"],
+        user=fb_config["user"],
+        password=fb_config["password"],
+        use_cache=True,
+        timeout=FRITZBOX_TIMEOUT,
+    )
+
 
 def parse_switch_list(fc: FritzConnection) -> list:
     """Retrieve and parse the list of switch identifiers from FritzBox."""
     result = fc.call_http("getswitchlist")
-    switch_identifiers = result["content"].split(",")
-    return [identifier.strip("\n") for identifier in switch_identifiers]
+    return [ain.strip() for ain in result["content"].split(",") if ain.strip()]
+
 
 def get_selected_ains(config: dict, switch_identifiers: list) -> list:
     """Get the AINs to query from the configuration."""
-    if configuration["QUERY"]["AINS"] == "ALL":
+    if config["QUERY"]["AINS"] == "ALL":
         return switch_identifiers
-    else:
-        return config["QUERY"]["AINS"]
+    return [str(ain) for ain in config["QUERY"]["AINS"]]
 
-def query_switch_data(fc: FritzConnection, ain: str)-> dict:
-    """Query data for a specific switch identified by."""
+
+def _to_number(raw: str, divisor: float = 1.0) -> float | None:
+    """Convert a raw AHA value ("215", "-35", "inval", "") to a float.
+
+    The AHA interface reports unavailable values as "inval"; those become
+    None (JSON null). Negative values (e.g. outdoor temperatures) are valid.
+    """
+    raw = (raw or "").strip()
+    try:
+        return float(int(raw)) / divisor
+    except ValueError:
+        return None
+
+
+def query_switch_data(fc: FritzConnection, ain: str) -> dict:
+    """Query data for a specific switch identified by its AIN."""
     data = {"AIN": ain}
 
-    result = fc.call_http("getswitchname", ain)
-    data["name"] = result["content"].strip("\n")
+    data["name"] = fc.call_http("getswitchname", ain)["content"].strip()
+    # gettemperature: 0.1 degC, getswitchpower: mW, getswitchenergy: Wh
+    data["temp"] = _to_number(fc.call_http("gettemperature", ain)["content"], 10)
+    data["power"] = _to_number(fc.call_http("getswitchpower", ain)["content"], 1000)
+    data["allpower"] = _to_number(fc.call_http("getswitchenergy", ain)["content"], 1000)
 
-    result = fc.call_http("gettemperature", ain)
-    temp = result["content"].strip("\n")
-    data["temp"] = float(temp) / 10 if temp.isdigit() else "NA"
-
-    result = fc.call_http("getswitchpower", ain)
-    power = result["content"].strip("\n")
-    data["power"] = float(power) / 1000 if power.isdigit() else "NA"
-
-    result = fc.call_http("getswitchenergy", ain)
-    energy = result["content"].strip("\n")
-    data["allpower"] = float(energy) / 1000 if energy.isdigit() else "NA"
-
-    result = fc.call_http("getbasicdevicestats", ain)
-    parse_device_stats(result["content"], data)
-
+    parse_device_stats(fc.call_http("getbasicdevicestats", ain)["content"], data)
     return data
 
-def parse_device_stats(xml_data: str, data: dict):
-    """Parse XML data from 'getbasicdevicestats' and update the data dictionary."""
+
+def parse_device_stats(xml_data: str, data: dict) -> None:
+    """Parse XML from 'getbasicdevicestats' and add voltage / derived current.
+
+    The voltage stats are a comma separated list in mV, newest value first.
+    Keys are always present; unavailable values are None (JSON null).
+    """
+    voltage = None
     root = ET.fromstring(xml_data)
-    voltage_element = root.find('voltage')
-    if voltage_element is not None:
-        stats = voltage_element.find('stats')
-        if stats is not None:
-            raw_voltage = stats.text.split(',')[0]
-            try:
-                voltage = float(raw_voltage[:-3] + '.' + raw_voltage[-1:])
-                data["voltage"] = voltage
-                if "power" in data and data["power"] != "NA":
-                    data["current"] = round(data["power"] / voltage, 2)
-            except ValueError:
-                data["voltage_err"] = "NA"
-    else:
-        data["voltage_err"] = "NA"
+    stats = root.find("voltage/stats")
+    if stats is not None and stats.text:
+        voltage = _to_number(stats.text.split(",")[0], 1000)
+
+    data["voltage"] = voltage
+    power = data.get("power")
+    data["current"] = round(power / voltage, 3) if voltage and power is not None else None
+
 
 def abfrage_fb(mqtt_con):
-    """Main function to query FritzBox and send data via MQTT.
+    """Poll loop: query the FritzBox and publish the data via MQTT.
 
     The FritzConnection is created once and reused across loop iterations.
     It is only rebuilt (fc = None -> reconnect) after a connection/service
-    error. This avoids rebuilding the HTTP session and re-parsing the
-    device description on every cycle.
+    error. Errors that concern a single device are logged and skipped so
+    that one broken socket does not block the others.
     """
     fc = None
+    mqtt_was_connected = True
     while True:
         try:
             if not mqtt_con.MQTTClient.is_connected():
-                logger.warning("MQTT not connected. Waiting before retry...")
-                time.sleep(5) # wait 5 seconds and try again
+                if mqtt_was_connected:
+                    logger.warning(f"MQTT not connected. Waiting for the broker (retrying every {MQTT_WAIT_DELAY}s)...")
+                    mqtt_was_connected = False
+                time.sleep(MQTT_WAIT_DELAY)
                 continue
+            if not mqtt_was_connected:
+                logger.info("MQTT connection is back. Resuming queries.")
+                mqtt_was_connected = True
 
             if fc is None:
                 fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
@@ -149,23 +178,30 @@ def abfrage_fb(mqtt_con):
                 try:
                     mqtt_data = query_switch_data(fc, ain)
                     mqtt_con.sendData(ain, mqtt_data)
-                except FritzHttpInterfaceError as fbintexp:
-                    logger.error(f"AIN '{ain}' not exists on this FritzBox? {fbintexp}")
+                except PER_AIN_ERRORS as per_ain_err:
+                    logger.error(f"AIN '{ain}': skipped ({type(per_ain_err).__name__}: {per_ain_err})")
 
-        except FritzServiceError as fbexp:
-            logger.error(f"FritzServiceError: {fbexp}")
-            logger.info("Reconnecting to FritzBox in 60sec...")
+        except FritzAuthorizationError as auth_err:
+            logger.error(f"FritzBox login failed: {auth_err} - check user/password in {SECRETS_FILE_NAME_YAML}")
+            logger.info(f"Retrying in {RETRY_DELAY_AUTH}s (avoid triggering the FritzBox login lock-out)...")
+            fc = None
+            time.sleep(RETRY_DELAY_AUTH)
+
+        except (FritzConnectionException, requests.exceptions.RequestException) as conn_err:
+            logger.error(f"FritzBox connection error: {conn_err}")
+            logger.info(f"Reconnecting to FritzBox in {RETRY_DELAY_ERROR}s...")
             fc = None  # force a fresh connection on the next cycle
-            time.sleep(60)
+            time.sleep(RETRY_DELAY_ERROR)
 
         except Exception as e:
-            logger.error(f"Error querying FritzBox: {e}")
-            logger.info("Reconnecting to FritzBox in 60sec...")
-            fc = None  # force a fresh connection on the next cycle
-            time.sleep(60)
+            logger.exception(f"Unexpected error querying FritzBox: {e}")
+            logger.info(f"Reconnecting to FritzBox in {RETRY_DELAY_ERROR}s...")
+            fc = None
+            time.sleep(RETRY_DELAY_ERROR)
 
         looptime = configuration.get("QUERY", {}).get("looptime", 10)
         time.sleep(looptime)
+
 
 def action_handler(action_type, data):
     """Dispatch an action received via MQTT."""
@@ -177,11 +213,12 @@ def action_handler(action_type, data):
         # not truthiness.
         if ain and switchstate is not None:
             logger.info(f"Setting switch for AIN {ain} to {switchstate}")
-            handle_set_switch(ain, switchstate)
+            handle_set_switch(str(ain), switchstate)
         else:
             logger.error("AIN or switchstate missing in the data.")
     else:
         logger.warning(f"Unknown action type '{action_type}' received.")
+
 
 def _parse_switchstate(switchstate) -> bool:
     """Normalize a switchstate from MQTT into a bool.
@@ -215,12 +252,10 @@ def handle_set_switch(ain: str, switchstate):
         return
 
     try:
-        logger.debug(f"Sending switchstate: {target}")
-
-        # Verbinde zur FritzBox und ändere den Schalterzustand über das
-        # AHA-HTTP-Interface (konsistent mit der restlichen Abfrage). Die
-        # TR-064/SOAP-Variante (FritzHomeAutomation.set_switch) liefert hier
-        # 'UPnPError 402 Invalid Args'.
+        # Switch via the AHA HTTP interface (consistent with the polling).
+        # The TR-064/SOAP variant (FritzHomeAutomation.set_switch) returns
+        # 'UPnPError 402 Invalid Args' here. A dedicated connection is used
+        # so the poll thread's connection is never shared between threads.
         fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
         fc = connect_to_fritzbox(fb_config)
 
@@ -232,23 +267,20 @@ def handle_set_switch(ain: str, switchstate):
     except Exception as e:
         logger.error(f"Error setting switch: {e}")
 
+
 def listen_mqtt_forever(mqtt_client):
-    """Endlessly listen for MQTT messages."""
+    """Run the paho network loop; paho reconnects by itself (reconnect_delay_set)."""
     while True:
         try:
-            mqtt_client.MQTTClient.loop_forever()
+            mqtt_client.MQTTClient.loop_forever(retry_first_connection=True)
         except Exception as e:
             logger.error(f"Error in MQTT loop: {e}")
-            try:
-                mqtt_client.MQTTClient.reconnect()
-                logger.info("Reconnected to MQTT broker.")
-            except Exception as e:
-                logger.error(f"Error reconnecting to MQTT broker: {e}")
-                time.sleep(5)
+        time.sleep(MQTT_WAIT_DELAY)
+
 
 # ---------------
 def main():
-    global configuration , secrets, logger
+    global configuration, secrets, logger
 
     configuration = load_config_file(CONFIG_FILE_NAME_YAML)
     secrets = load_config_file(SECRETS_FILE_NAME_YAML)
@@ -263,21 +295,16 @@ def main():
     mqtt_client.action_handler = action_handler
     mqtt_client.connect()
 
-    # Starte den Thread für die FritzBox-Abfragen
-    fb_thread = threading.Thread(target=abfrage_fb, args=(mqtt_client,))
-    fb_thread.daemon = True
+    fb_thread = threading.Thread(target=abfrage_fb, args=(mqtt_client,), name="fritzbox-poll", daemon=True)
+    mqtt_thread = threading.Thread(target=listen_mqtt_forever, args=(mqtt_client,), name="mqtt-loop", daemon=True)
 
-    # Starte den Thread für das MQTT-Listening
-    mqtt_thread = threading.Thread(target=listen_mqtt_forever, args=(mqtt_client,))
-    mqtt_thread.daemon = True
-
-    #starte die Threads
     fb_thread.start()
     mqtt_thread.start()
 
     fb_thread.join()
     mqtt_thread.join()
 
+
 # ===================================
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
