@@ -4,9 +4,8 @@
 #
 # Requirements:
 #   - Docker + Docker Compose v2
-#   - TIME_ZONE provided via environment (dockhand env panel) or an env file
-#   - external Docker network (here: web_net) or adjust the networks block
-#   - secrets.yaml present at the host path mounted below
+#   - secrets.yaml present at the host path mounted below, readable by UID 1000
+#   - optional: TIME_ZONE in the environment (dockhand env panel / .env), default UTC
 
 services:
   fritzdect2mqtt:
@@ -16,18 +15,14 @@ services:
     image: fritzdect2mqtt:local
     container_name: fritzdect2mqtt
     restart: unless-stopped
-    mem_limit: 128m                # guardrail (normal operation ~40-70 MB)
-    networks:
-      - web_net
+    mem_limit: 128m                # guardrail (normal operation ~30-50 MB)
     working_dir: /opt/fritzdect2mqtt
     volumes:
       # Only the secret stays on the host (never committed to Git, not baked
       # into the image). Everything else comes from the image.
       - /opt/docker-data/fritzdect2mqtt/secrets.yaml:/opt/fritzdect2mqtt/secrets.yaml:ro
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
     environment:
-      - TZ=${TIME_ZONE}
+      - TZ=${TIME_ZONE:-UTC}
       - MALLOC_ARENA_MAX=2
       - MALLOC_TRIM_THRESHOLD_=100000
     logging:
@@ -35,7 +30,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-networks:
-  web_net:
-    external: true

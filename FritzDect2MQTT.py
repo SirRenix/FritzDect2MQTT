@@ -15,6 +15,8 @@ Example (PowerShell, mosquitto clients):
 
 import logging.config
 import os
+import signal
+import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -43,6 +45,8 @@ FRITZBOX_TIMEOUT = 10
 RETRY_DELAY_ERROR = 60
 RETRY_DELAY_AUTH = 300
 MQTT_WAIT_DELAY = 5
+# Touched after every successful query cycle; the Docker HEALTHCHECK checks its age.
+HEARTBEAT_FILE = os.environ.get("FD2M_HEARTBEAT_FILE", "/tmp/fritzdect2mqtt.alive")
 
 # Errors that concern a single device / response and must not abort the
 # whole query cycle (the other AINs are still queried).
@@ -120,10 +124,32 @@ def query_switch_data(fc: FritzConnection, ain: str) -> dict:
     # gettemperature: 0.1 degC, getswitchpower: mW, getswitchenergy: Wh
     data["temp"] = _to_number(fc.call_http("gettemperature", ain)["content"], 10)
     data["power"] = _to_number(fc.call_http("getswitchpower", ain)["content"], 1000)
-    data["allpower"] = _to_number(fc.call_http("getswitchenergy", ain)["content"], 1000)
+    data["energy"] = _to_number(fc.call_http("getswitchenergy", ain)["content"], 1000)
+    # Deprecated alias for "energy" (kWh), kept for existing consumers; removed in 2.0.
+    data["allpower"] = data["energy"]
+    data["state"] = _switch_state(fc.call_http("getswitchstate", ain)["content"])
 
     parse_device_stats(fc.call_http("getbasicdevicestats", ain)["content"], data)
     return data
+
+
+def _switch_state(raw: str) -> str | None:
+    """Map getswitchstate ("1" / "0" / "inval") to "on" / "off" / None."""
+    value = (raw or "").strip()
+    if value == "1":
+        return "on"
+    if value == "0":
+        return "off"
+    return None
+
+
+def touch_heartbeat() -> None:
+    """Record a successful cycle for the container HEALTHCHECK."""
+    try:
+        with open(HEARTBEAT_FILE, "w") as f:
+            f.write(str(time.time()))
+    except OSError as e:
+        logger.debug(f"Cannot write heartbeat file {HEARTBEAT_FILE}: {e}")
 
 
 def parse_device_stats(xml_data: str, data: dict) -> None:
@@ -152,18 +178,20 @@ def abfrage_fb(mqtt_con):
     that one broken socket does not block the others.
     """
     fc = None
-    mqtt_was_connected = True
+    mqtt_down_cycles = 0
     while True:
         try:
             if not mqtt_con.MQTTClient.is_connected():
-                if mqtt_was_connected:
+                mqtt_down_cycles += 1
+                # Warn once, and only if the broker is really away (not just
+                # the few ms until the CONNACK arrives after start-up).
+                if mqtt_down_cycles == 2:
                     logger.warning(f"MQTT not connected. Waiting for the broker (retrying every {MQTT_WAIT_DELAY}s)...")
-                    mqtt_was_connected = False
                 time.sleep(MQTT_WAIT_DELAY)
                 continue
-            if not mqtt_was_connected:
+            if mqtt_down_cycles >= 2:
                 logger.info("MQTT connection is back. Resuming queries.")
-                mqtt_was_connected = True
+            mqtt_down_cycles = 0
 
             if fc is None:
                 fb_config = secrets["Fritzbox"][configuration["QUERY"]["FB"]]
@@ -180,6 +208,7 @@ def abfrage_fb(mqtt_con):
                     mqtt_con.sendData(ain, mqtt_data)
                 except PER_AIN_ERRORS as per_ain_err:
                     logger.error(f"AIN '{ain}': skipped ({type(per_ain_err).__name__}: {per_ain_err})")
+            touch_heartbeat()
 
         except FritzAuthorizationError as auth_err:
             logger.error(f"FritzBox login failed: {auth_err} - check user/password in {SECRETS_FILE_NAME_YAML}")
@@ -294,6 +323,15 @@ def main():
     mqtt_client = MQTT.MQTT(configuration, secrets)
     mqtt_client.action_handler = action_handler
     mqtt_client.connect()
+
+    def _shutdown(signum, frame):
+        # A clean disconnect does not trigger the LWT, so publish "offline" explicitly.
+        logger.info(f"Received signal {signum}, shutting down")
+        mqtt_client.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
 
     fb_thread = threading.Thread(target=abfrage_fb, args=(mqtt_client,), name="fritzbox-poll", daemon=True)
     mqtt_thread = threading.Thread(target=listen_mqtt_forever, args=(mqtt_client,), name="mqtt-loop", daemon=True)

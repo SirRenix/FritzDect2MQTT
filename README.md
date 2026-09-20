@@ -2,177 +2,181 @@
 
 [![en](https://img.shields.io/badge/lang-en-red.svg)](README.md) | [![de](https://img.shields.io/badge/lang-de-green.svg)](README.de.md)
 
-## 📦 Overview
+Polls **Fritz!DECT smart sockets** on a FritzBox via the **AHA HTTP API**
+([fritzconnection](https://fritzconnection.readthedocs.io)) and publishes name, temperature, power,
+energy, voltage, current and switch state to **MQTT**. Sockets can be **switched via MQTT**.
+One small container, no home automation platform required.
 
-This project reads data from **Fritz!DECT smart sockets** connected to a FritzBox via
-the **AHA HTTP API** (using [fritzconnection](https://fritzconnection.readthedocs.io))
-and publishes it to an **MQTT broker**. It can also **switch sockets on/off** via MQTT.
+Built to feed a **Voron 3D printer (Klipper / Moonraker / Mainsail)**: live socket stats in
+Mainsail, energy per print job in Moonraker's history, on/off toggle.
 
-It runs as a small **Docker Compose** service on any Linux host (originally built for a
-Raspberry Pi). A previous variant targeted QNAP NAS — that build path has been removed
-in favour of the simpler Compose setup below.
-
-> Personal/hobby project. The full change history is in the [CHANGELOG](CHANGELOG.md).
+> **Status:** feature-complete, maintenance mode. Bugs get fixed, no new features planned.
+> If you run Home Assistant you don't need this — use HA's native *AVM FRITZ!SmartHome*
+> integration and Moonraker's `[power type: homeassistant]`.
 > Based on [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), heavily reworked.
 
 ---
 
-## 🎯 Background & goal
-
-This project was created to connect Fritz!DECT power sockets to a **Voron 3D printer**
-running **Klipper / Moonraker / Mainsail**. The goals are:
-
-1. **History values in the database** — record the socket's consumption (power/energy) so it
-   is stored alongside Moonraker's job history table.
-2. **Live display in Mainsail** — show the socket's current stats (power draw, voltage,
-   current, temperature) directly in the Mainsail web UI.
-
-Both are achieved by publishing the socket data to MQTT (this project) and consuming it on
-the Moonraker side via its `[mqtt]`, `[sensor]` and `[power]` integrations.
-
----
-
-## 🚀 Features
-
-- 📡 **MQTT publish** of per-socket name, temperature, power, energy, voltage, current
-- 🔀 **Switching via MQTT** (`set_switch`) using the AHA HTTP interface
-- 🔁 **Reconnection handling** for the MQTT connection
-- 🔧 **Threading**: querying and command-listening run in parallel
-- 📊 **Device statistics** via `getbasicdevicestats` (voltage / derived current)
-- 🧹 **Container-native logging** to stdout, rotated by Docker (`json-file`)
-
----
-
-## 🔌 MQTT data model
+## MQTT data model
 
 | Direction | Topic | Payload |
 |-----------|-------|---------|
-| publish (state) | `<maintoken>/<FB>/<AIN>` | `{"AIN": "...", "name": "...", "temp": 21.0, "power": 7.46, "allpower": 29.4, "voltage": 233.3, "current": 0.03}` |
-| subscribe (command) | `<cmdtoken>/<FB>/<AIN>` | `{"action": "set_switch", "data": {"AIN": "...", "switchstate": "on"}}` |
+| state (publish) | `<maintoken>/<FB>/<AIN>` | `{"AIN": "116570123456", "name": "Printer", "temp": 21.0, "power": 7.46, "energy": 29.4, "allpower": 29.4, "state": "on", "voltage": 233.3, "current": 0.032}` |
+| availability (publish, retained) | `<maintoken>/<FB>/status` | `online` / `offline` (last will) |
+| command (subscribe) | `<cmdtoken>/<FB>/<AIN>` | `{"action": "set_switch", "data": {"AIN": "116570123456", "switchstate": "on"}}` |
 
-Defaults: `maintoken = sensor/FB`, `cmdtoken = cmd/FB`, `<FB>` = the `QUERY.FB` name.
-The command tree is intentionally **separate** from the state tree so the client never
-receives its own published messages. `switchstate` accepts `on`/`off`, `true`/`false`,
-`1`/`0` (string or JSON boolean).
+- Units: `temp` °C, `power` W, `energy` kWh (total meter), `voltage` V, `current` A (derived: power/voltage).
+  Unavailable values are `null`.
+- `allpower` is a **deprecated alias of `energy`** (removed in 2.0).
+- `state` is `on` / `off` (the FritzBox reports a switch change with ~10 s delay).
+- `switchstate` accepts `on`/`off`, `true`/`false`, `1`/`0` (string or JSON boolean).
+- Defaults: `maintoken = sensor/FB`, `cmdtoken = cmd/FB`, `<FB>` = `QUERY.FB`. Command and state
+  trees are separate so the client never receives its own messages.
 
-Example (PowerShell with the mosquitto clients):
-
-```powershell
-.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570123456" `
-  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570123456\", \"switchstate\": \"off\"}}'
+```bash
+mosquitto_pub -h <broker> -t "cmd/FB/MyFritzbox/116570123456" \
+  -m '{"action": "set_switch", "data": {"AIN": "116570123456", "switchstate": "off"}}'
 ```
 
 ---
 
-## 🐳 Docker installation (recommended)
+## Moonraker / Mainsail example
 
-The image bakes in the code, dependencies and `configdata.cfg` (see
-[`docker/Dockerfile`](docker/Dockerfile)). **Only `secrets.yaml` is mounted from the
-host** — it must never be committed to Git. `TIME_ZONE` is passed as an environment
-variable; the container joins an external Docker network (`web_net` by default).
+Live values + job history via `[sensor]`, on/off toggle via `[power]`. Set `retain: true` in
+`configdata.cfg` so Mainsail shows values right after a restart.
 
-**Prepare the secret on the Docker host** (once):
+> Example based on the Moonraker docs — verify against your own setup.
+
+```ini
+# moonraker.conf
+[mqtt]
+address: <broker-ip>
+port: 1883
+username: {secrets.mqtt.username}
+password: {secrets.mqtt.password}
+enable_moonraker_api: False
+
+[sensor printer_socket]
+type: mqtt
+name: Printer socket
+state_topic: sensor/FB/MyFritzbox/116570123456
+state_response_template:
+  {% set d = payload|fromjson %}
+  {set_result("power", d["power"]|float)}
+  {set_result("voltage", d["voltage"]|float)}
+  {set_result("current", d["current"]|float)}
+  {set_result("energy", d["energy"]|float)}
+  {set_result("temperature", d["temp"]|float)}
+parameter_power:
+  units=W
+parameter_voltage:
+  units=V
+parameter_current:
+  units=A
+parameter_energy:
+  units=kWh
+parameter_temperature:
+  units=°C
+history_field_energy_consumption:
+  parameter=energy
+  desc=Printer energy consumption
+  strategy=delta
+  units=kWh
+  init_tracker=true
+  precision=3
+  report_total=true
+
+[power printer_socket]
+type: mqtt
+command_topic: cmd/FB/MyFritzbox/116570123456
+command_payload:
+  {"action": "set_switch", "data": {"AIN": "116570123456", "switchstate": "{command}"}}
+state_topic: sensor/FB/MyFritzbox/116570123456
+state_response_template:
+  {% set d = payload|fromjson %}
+  {d["state"]}
+query_after_command: False
+```
+
+---
+
+## Docker (recommended)
+
+The image bakes in code, dependencies and `configdata.cfg`. **Only `secrets.yaml` is mounted**
+from the host — never commit it. The container runs as **UID 1000** and has a `HEALTHCHECK`
+(healthy = a query cycle succeeded within the last 180 s).
+
+Prepare the secret on the Docker host (once):
 
 ```bash
 sudo mkdir -p /opt/docker-data/fritzdect2mqtt
-# create /opt/docker-data/fritzdect2mqtt/secrets.yaml from _secrets.yaml in this repo
-sudo $EDITOR /opt/docker-data/fritzdect2mqtt/secrets.yaml
-sudo chmod 600 /opt/docker-data/fritzdect2mqtt/secrets.yaml
-docker network create web_net    # only if it does not exist yet
+sudo cp _secrets.yaml /opt/docker-data/fritzdect2mqtt/secrets.yaml   # then edit the credentials
+sudo chown 1000:1000 /opt/docker-data/fritzdect2mqtt/secrets.yaml
+sudo chmod 400 /opt/docker-data/fritzdect2mqtt/secrets.yaml
 ```
 
-### Option A — Git deploy via dockhand (recommended, this is what is tested)
+**Option A — plain Docker Compose**
 
-This project is **deployed and tested with [dockhand](https://github.com/fnsys/dockhand)**
-using its *Deploy from Git* feature, so a `git push` is the only action needed to roll
-out a change:
+```bash
+git clone https://github.com/SirRenix/FritzDect2MQTT.git && cd FritzDect2MQTT
+TIME_ZONE=Europe/Berlin docker compose -f docker/compose.yaml up -d --build
+docker logs -f fritzdect2mqtt
+```
+
+**Option B — Git deploy via [dockhand](https://github.com/fnsys/dockhand)** (*Deploy from Git*, build on deploy):
 
 | Field | Value |
 |-------|-------|
-| Repository URL | `https://github.com/SirRenix/FritzDect2MQTT.git` |
-| Branch | `main` |
-| Credential | `None (public)` |
+| Repository URL / Branch | `https://github.com/SirRenix/FritzDect2MQTT.git` / `main` |
 | Compose file path | `docker/compose.yaml` |
-| **Context directory** | **`.`** (repository root — **required**) |
-| Build images on deploy | **on** |
-| Enable webhook | on (point your GitHub webhook at the dockhand URL) |
-| Environment variable | `TIME_ZONE=Europe/Berlin` |
-
-> ⚠️ **Set _Context directory_ to `.`** — without it dockhand uses the compose file's
-> directory (`docker/`) as the build context, so the build cannot find the app files at
-> the repository root (`requirements.txt`, `*.py`) and fails with
-> `lstat .../docker: no such file or directory`. With `.` the whole repo is the build
-> context and `build.context: ..` in `docker/compose.yaml` resolves correctly.
-
-### Option B — plain Docker Compose
-
-```bash
-git clone https://github.com/SirRenix/FritzDect2MQTT.git
-cd FritzDect2MQTT
-TIME_ZONE=Europe/Berlin docker compose -f docker/compose.yaml up -d --build
-```
-
-Logs go to stdout and are captured/rotated by Docker (`json-file`, 10 MB × 3):
-
-```bash
-docker compose -f docker/compose.yaml logs -f
-# or:  docker logs -f fritzdect2mqtt
-```
+| **Context directory** | **`.`** — required, otherwise the build cannot find the app files (`lstat .../docker: no such file`) |
+| Build images on deploy | on |
+| Environment | `TIME_ZONE=Europe/Berlin` (optional, default UTC) |
 
 ---
 
-## 🧪 Manual installation (without Docker, optional)
+## Without Docker
 
-Runs on any Linux machine with Python 3.10+:
+Python 3.12+:
 
 ```bash
-sudo apt-get install python3-venv
-cd FritzDect2MQTT
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-cp _secrets.yaml secrets.yaml   # then edit credentials
-python FritzDect2MQTT.py
+cp _secrets.yaml secrets.yaml      # edit credentials
+python FritzDect2MQTT.py           # wrap in systemd for permanent use
 ```
-
-To run it permanently, wrap it in a systemd service (or your supervisor of choice)
-that starts `python FritzDect2MQTT.py` from the project directory.
 
 ---
 
-## ⚙️ Configuration (`configdata.cfg`)
+## Configuration (`configdata.cfg`)
 
 | Key | Meaning |
 |-----|---------|
 | `QUERY.FB` | Name of the FritzBox entry in `secrets.yaml` |
-| `QUERY.AINS` | `ALL` or a list of specific AINs to query |
-| `QUERY.looptime` | Seconds between query cycles (default 30; change requires restart) |
-| `MQTT.broker` | Which `MQTT_BROKER` entry in `secrets.yaml` to use (default `RASPI`) |
-| `MQTT.maintoken` | Base topic for published state data |
-| `MQTT.cmdtoken` | Base topic for incoming switch commands |
+| `QUERY.AINS` | `ALL` or a list of AINs |
+| `QUERY.looptime` | Seconds between query cycles (default 30) |
+| `MQTT.broker` | `MQTT_BROKER` entry in `secrets.yaml` to use (default `RASPI`) |
+| `MQTT.maintoken` / `MQTT.cmdtoken` | Base topics for state / commands |
 | `MQTT.clientId` | MQTT client id |
-| `logging` | Standard Python `logging.config.dictConfig` block |
+| `MQTT.qos` / `MQTT.retain` | QoS (0) / retain (false) for published state |
+| `logging` | Python `logging.config.dictConfig` block |
+
+Behaviour on errors: MQTT reconnects with back-off (1–60 s); a failing FritzBox connection is
+retried after 60 s, a failed login after 300 s (avoids the FritzBox login lock-out); a single
+unreachable socket is skipped, the others are still published.
 
 ---
 
-## 🧭 Scope (what this is — and is not)
+## Scope
 
-**In scope:** Fritz!DECT *switchable sockets* with power metering (e.g. DECT 200/210) on one
-FritzBox → MQTT, plus switching them via MQTT. Small, single-purpose, container-first, no home
-automation platform required. Primary consumer: Moonraker/Mainsail (see above).
+**In:** Fritz!DECT switchable sockets with power metering (DECT 200/210 …) on one FritzBox → MQTT,
+switching via MQTT. One container per FritzBox.
+**Out (by design):** Home Assistant discovery (HA has a native AVM integration), thermostats /
+blinds / buttons, several boxes per instance. A native Moonraker `[power]` device would be the
+proper long-term home for this — not planned here.
 
-**Out of scope (by design):**
-- **Home Assistant MQTT discovery** — Home Assistant already has a native *AVM FRITZ!SmartHome*
-  integration; this bridge is for setups *without* HA in the loop.
-- **Thermostats, blinds, buttons, other DECT device types** — use HA / ioBroker / openHAB for that.
-- **Several FritzBoxes in one instance** — run one container per box (`QUERY.FB` selects the box,
-  `secrets.yaml` can hold several).
-
----
-
-## 📄 License & attribution
+## License
 
 MIT — see [LICENSE](LICENSE). Originally forked from
-[Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT, © 2024 Zentris); since then
-restructured and extended by SirRenix.
+[Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (© 2024 Zentris), restructured
+and extended by SirRenix. Changes: [CHANGELOG](CHANGELOG.md).

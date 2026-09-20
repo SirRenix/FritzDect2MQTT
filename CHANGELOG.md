@@ -1,5 +1,44 @@
 # Changelog
 
+## Version 1.5.0 – 2026-09-20
+Pre-public audit release: bug fixes, hardening, payload completion. Project is now
+feature-complete (maintenance mode).
+
+### Added
+- `state` (`on`/`off`) in the state payload via `getswitchstate` → enables Moonraker
+  `[power type: mqtt]` (on/off toggle in Mainsail).
+- `energy` (kWh) in the state payload; `allpower` is kept as a **deprecated alias**.
+- Availability topic `<maintoken>/<FB>/status` (`online` retained / `offline` as last will and on
+  clean shutdown).
+- `MQTT.qos` and `MQTT.retain` options (defaults 0 / false = previous behaviour).
+- Clean shutdown on SIGTERM/SIGINT (publishes `offline`, disconnects).
+- Docker `HEALTHCHECK` (heartbeat file written after every successful query cycle).
+- Unit tests (`tests/`), CI (ruff, pytest, Docker build) replacing the failing pylint workflow.
+- README: Moonraker/Mainsail example config, scope, license/attribution.
+
+### Fixed
+- Negative temperatures were reported as `"NA"` (`isdigit()`); signed values are now parsed.
+- Voltage from `getbasicdevicestats` was mis-parsed (233412 mV → 233.2 V instead of 233.412 V).
+- One unreachable/faulty socket no longer aborts the whole cycle with a 60 s reconnect; per-AIN
+  errors are logged and skipped.
+- No more login storm on wrong FritzBox credentials (10 immediate retries triggered the
+  FritzBox lock-out); now fail fast + 300 s back-off.
+- FritzBox HTTP calls have a 10 s timeout (previously none).
+- `MQTT not connected` was logged every 5 s (176 k lines in a broker outage); now only on state change.
+- Non-UTF-8 command payloads no longer escape the message handler and force a reconnect.
+
+### Changed
+- Unavailable values are JSON `null` instead of the string `"NA"`; `voltage`/`current` keys are
+  always present (`voltage_err` removed).
+- paho-mqtt `CallbackAPIVersion.VERSION2` (VERSION1 is deprecated); reconnect handled by paho
+  (`reconnect_delay_set`) instead of a blocking loop in `on_disconnect`.
+- Docker: container runs as UID 1000 (`secrets.yaml` must be `chown 1000:1000`); `.dockerignore`;
+  compose no longer needs an external network or `/etc/localtime` mounts; `TIME_ZONE` defaults to UTC.
+- Dead code removed (`handle_log_message`, `MQTT.py` test block).
+
+### Deprecated
+- `allpower` → use `energy`. Will be removed in 2.0.
+
 ## Version 1.4.1 – 2026-06-09
 ### Changed
 - **Dependency maintenance** (verified against the live FritzBox before release):

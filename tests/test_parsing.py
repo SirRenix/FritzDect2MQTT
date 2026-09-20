@@ -114,6 +114,7 @@ def test_query_switch_data_payload_is_json_serialisable():
             "gettemperature": "-15\n",
             "getswitchpower": "inval\n",
             "getswitchenergy": "29400\n",
+            "getswitchstate": "1\n",
             "getbasicdevicestats": STATS_XML,
         }
     )
@@ -121,7 +122,14 @@ def test_query_switch_data_payload_is_json_serialisable():
     assert data["name"] == "Printer"
     assert data["temp"] == -1.5
     assert data["power"] is None
-    assert data["allpower"] == 29.4
+    assert data["energy"] == 29.4
+    assert data["allpower"] == 29.4  # deprecated alias, identical value
+    assert data["state"] == "on"
     assert data["voltage"] == pytest.approx(233.412)
     assert data["current"] is None
     assert json.loads(json.dumps(data))["power"] is None  # "NA" strings are gone
+
+
+@pytest.mark.parametrize("raw, expected", [("1\n", "on"), ("0", "off"), ("inval", None), ("", None)])
+def test_switch_state(raw, expected):
+    assert app._switch_state(raw) == expected

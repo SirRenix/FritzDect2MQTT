@@ -25,6 +25,12 @@ class MQTT:
         # published messages back (which would be parsed as invalid commands).
         cmd_token = self.mqttConfData.get("cmdtoken", "cmd/FB")
         self.cmd_topic = f"{cmd_token}/{self.fritzbox}/#"
+        self.state_base = f"{self.mqttConfData['maintoken']}/{self.fritzbox}"
+        # Availability topic: "online" (retained) after connect, "offline" via
+        # last will resp. explicitly on shutdown.
+        self.availability_topic = f"{self.state_base}/status"
+        self.qos = int(self.mqttConfData.get("qos", 0))
+        self.retain = bool(self.mqttConfData.get("retain", False))
 
         self.logger = logging.getLogger(__name__)
 
@@ -35,6 +41,7 @@ class MQTT:
         # paho's loop_forever() reconnects on its own with this back-off; no
         # manual reconnect logic in callbacks (that would block the network loop).
         self.MQTTClient.reconnect_delay_set(min_delay=1, max_delay=60)
+        self.MQTTClient.will_set(self.availability_topic, "offline", qos=self.qos, retain=True)
 
         if self.mqttSecData["user"] and self.mqttSecData["password"]:
             self.MQTTClient.username_pw_set(self.mqttSecData["user"], self.mqttSecData["password"])
@@ -49,6 +56,7 @@ class MQTT:
             self.logger.info("Connected to MQTT Broker")
             client.subscribe(self.cmd_topic)
             self.logger.info(f"Subscribed to command topic '{self.cmd_topic}'")
+            client.publish(self.availability_topic, "online", qos=self.qos, retain=True)
         else:
             self.logger.error(f"Failed to connect to MQTT Broker: {reason_code}")
 
@@ -74,17 +82,26 @@ class MQTT:
         if sendData is None:
             raise ValueError("No data to send given")
 
-        currentTopic = self.mqttConfData["maintoken"] + "/" + self.fritzbox + "/" + addTopic
+        currentTopic = f"{self.state_base}/{addTopic}"
 
         self.logger.debug(f"Current topic: '{currentTopic}'")
 
         sendString = json.dumps(sendData, ensure_ascii=False)
-        result = self.MQTTClient.publish(currentTopic, sendString)
+        result = self.MQTTClient.publish(currentTopic, sendString, qos=self.qos, retain=self.retain)
 
         if result.rc == mqttClient.MQTT_ERR_SUCCESS:
             self.logger.debug(f"Sent '{sendString}' to topic '{currentTopic}'")
         else:
             self.logger.error(f"Failed to send to topic '{currentTopic}': {mqttClient.error_string(result.rc)}")
+
+    def shutdown(self):
+        """Publish 'offline' and disconnect cleanly (the LWT only fires on unclean disconnects)."""
+        try:
+            info = self.MQTTClient.publish(self.availability_topic, "offline", qos=self.qos, retain=True)
+            info.wait_for_publish(timeout=2)
+            self.MQTTClient.disconnect()
+        except Exception as e:
+            self.logger.debug(f"Shutdown publish/disconnect failed: {e}")
 
     def receiveData(self, client, userdata, message):
         try:
