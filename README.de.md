@@ -15,6 +15,7 @@ QNAP NAS — dieser Build-Weg wurde zugunsten des einfacheren Compose-Setups unt
 entfernt.
 
 > Privates/Hobby-Projekt. Das vollständige Änderungsprotokoll steht im [CHANGELOG](CHANGELOG.md).
+> Basiert auf [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), stark überarbeitet.
 
 ---
 
@@ -59,8 +60,8 @@ Status-Nachrichten nicht zurückerhält. `switchstate` akzeptiert `on`/`off`, `t
 Beispiel (PowerShell mit den mosquitto-Clients):
 
 ```powershell
-.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570608608" `
-  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570608608\", \"switchstate\": \"off\"}}'
+.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570123456" `
+  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570123456\", \"switchstate\": \"off\"}}'
 ```
 
 ---
@@ -153,3 +154,26 @@ packen, der `python FritzDect2MQTT.py` aus dem Projektverzeichnis startet.
 | `MQTT.cmdtoken` | Basis-Topic für eingehende Schaltbefehle |
 | `MQTT.clientId` | MQTT-Client-ID |
 | `logging` | Standard-`logging.config.dictConfig`-Block von Python |
+
+---
+
+## 🧭 Scope (was das ist — und was nicht)
+
+**Im Scope:** Fritz!DECT-*Schaltsteckdosen* mit Leistungsmessung (z. B. DECT 200/210) an einer
+FritzBox → MQTT, plus Schalten per MQTT. Klein, zweckgebunden, Container-first, keine
+Home-Automation-Plattform nötig. Primärer Consumer: Moonraker/Mainsail (siehe oben).
+
+**Bewusst nicht im Scope:**
+- **Home-Assistant-MQTT-Discovery** — Home Assistant hat bereits die native
+  *AVM FRITZ!SmartHome*-Integration; diese Bridge ist für Setups *ohne* HA gedacht.
+- **Thermostate, Rollläden, Taster, andere DECT-Gerätetypen** — dafür HA / ioBroker / openHAB nutzen.
+- **Mehrere FritzBoxen in einer Instanz** — ein Container pro Box (`QUERY.FB` wählt die Box,
+  `secrets.yaml` kann mehrere enthalten).
+
+---
+
+## 📄 Lizenz & Attribution
+
+MIT — siehe [LICENSE](LICENSE). Ursprünglich ein Fork von
+[Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT, © 2024 Zentris); seitdem
+von SirRenix umstrukturiert und erweitert.

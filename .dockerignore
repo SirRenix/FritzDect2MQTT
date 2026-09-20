@@ -1,0 +1,15 @@
+# Keep the build context minimal and make sure nothing sensitive can be COPYed.
+.git
+.github
+.claude
+_project-notes
+__pycache__
+*.py[cod]
+*.md
+tests
+docker
+secrets.yaml
+.env
+.env.*
+*.bak*
+*.log*

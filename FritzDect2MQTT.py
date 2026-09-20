@@ -1,5 +1,3 @@
-# coding: utf8
-
 r"""
 https://fritzconnection.readthedocs.io/en/1.13.2/sources/getting_started.html
 AHA-HTTP-Interface: https://avm.de/fileadmin/user_upload/Global/Service/Schnittstellen/AHA-HTTP-Interface.pdf
@@ -8,7 +6,8 @@ State data is published to:   <maintoken>/<FB>/<AIN>   e.g. sensor/FB/MyFritzbox
 Switch commands are read on:  <cmdtoken>/<FB>/<AIN>   e.g. cmd/FB/MyFritzbox/123456789
 
 Example (PowerShell, mosquitto clients):
-  .\mosquitto_pub.exe -h 192.168.xxx.xxx -p 1883 -t "cmd/FB/MyFritzbox/123456789" -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"123456789\", \"switchstate\": \"on\"}}'
+  .\mosquitto_pub.exe -h 192.168.xxx.xxx -p 1883 -t "cmd/FB/MyFritzbox/123456789" `
+      -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"123456789\", \"switchstate\": \"on\"}}'
   .\mosquitto_sub.exe -h 192.168.xxx.xxx -p 1883 -t "#" -v
 """
 
@@ -40,7 +39,7 @@ logger: Logger
 def load_config_file(file_name):
     if not os.path.exists(file_name):
         raise NameError(f"File '{file_name}' is not accessible.")
-    with open(file_name, 'rt', encoding="utf-8") as f:
+    with open(file_name, encoding="utf-8") as f:
         return yaml.safe_load(f.read())
 
 def init_logging(config: str) -> Logger:
@@ -78,7 +77,7 @@ def get_selected_ains(config: dict, switch_identifiers: list) -> list:
         return switch_identifiers
     else:
         return config["QUERY"]["AINS"]
-    
+
 def query_switch_data(fc: FritzConnection, ain: str)-> dict:
     """Query data for a specific switch identified by."""
     data = {"AIN": ain}
@@ -91,7 +90,7 @@ def query_switch_data(fc: FritzConnection, ain: str)-> dict:
     data["temp"] = float(temp) / 10 if temp.isdigit() else "NA"
 
     result = fc.call_http("getswitchpower", ain)
-    power = result["content"].strip("\n")  
+    power = result["content"].strip("\n")
     data["power"] = float(power) / 1000 if power.isdigit() else "NA"
 
     result = fc.call_http("getswitchenergy", ain)
@@ -233,20 +232,6 @@ def handle_set_switch(ain: str, switchstate):
     except Exception as e:
         logger.error(f"Error setting switch: {e}")
 
-def handle_log_message(data):
-    """Handle the 'log_message' action."""
-    log_message = data.get("message", "No message provided")
-    log_level = data.get("level", "info").lower()
-
-    if log_level == "info":
-        print(log_message)
-    elif log_level == "warning":
-        print(f"WARNING: {log_message}")
-    elif log_level == "error":
-        print(f"ERROR: {log_message}")
-    else:
-        print(f"DEBUG: {log_message}")
-
 def listen_mqtt_forever(mqtt_client):
     """Endlessly listen for MQTT messages."""
     while True:
@@ -269,7 +254,7 @@ def main():
     secrets = load_config_file(SECRETS_FILE_NAME_YAML)
 
     logger = init_logging(configuration)
-    
+
     logger.info("------------Start program ------------")
     logger.info(f"Used Configfile: '{CONFIG_FILE_NAME_YAML}'")
 

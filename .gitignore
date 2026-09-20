@@ -6,6 +6,9 @@ secrets.yaml
 # Local project notes (host-specific details, not for the public repo)
 _project-notes/
 
+# Claude Code local settings (may contain host names / command history)
+.claude/
+
 *.log.*
 *.bak*
 

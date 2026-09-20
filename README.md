@@ -13,6 +13,7 @@ Raspberry Pi). A previous variant targeted QNAP NAS — that build path has been
 in favour of the simpler Compose setup below.
 
 > Personal/hobby project. The full change history is in the [CHANGELOG](CHANGELOG.md).
+> Based on [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), heavily reworked.
 
 ---
 
@@ -57,8 +58,8 @@ receives its own published messages. `switchstate` accepts `on`/`off`, `true`/`f
 Example (PowerShell with the mosquitto clients):
 
 ```powershell
-.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570608608" `
-  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570608608\", \"switchstate\": \"off\"}}'
+.\mosquitto_pub.exe -h <broker> -p 1883 -t "cmd/FB/MyFritzbox/116570123456" `
+  -m '{\"action\": \"set_switch\", \"data\": {\"AIN\": \"116570123456\", \"switchstate\": \"off\"}}'
 ```
 
 ---
@@ -152,3 +153,26 @@ that starts `python FritzDect2MQTT.py` from the project directory.
 | `MQTT.cmdtoken` | Base topic for incoming switch commands |
 | `MQTT.clientId` | MQTT client id |
 | `logging` | Standard Python `logging.config.dictConfig` block |
+
+---
+
+## 🧭 Scope (what this is — and is not)
+
+**In scope:** Fritz!DECT *switchable sockets* with power metering (e.g. DECT 200/210) on one
+FritzBox → MQTT, plus switching them via MQTT. Small, single-purpose, container-first, no home
+automation platform required. Primary consumer: Moonraker/Mainsail (see above).
+
+**Out of scope (by design):**
+- **Home Assistant MQTT discovery** — Home Assistant already has a native *AVM FRITZ!SmartHome*
+  integration; this bridge is for setups *without* HA in the loop.
+- **Thermostats, blinds, buttons, other DECT device types** — use HA / ioBroker / openHAB for that.
+- **Several FritzBoxes in one instance** — run one container per box (`QUERY.FB` selects the box,
+  `secrets.yaml` can hold several).
+
+---
+
+## 📄 License & attribution
+
+MIT — see [LICENSE](LICENSE). Originally forked from
+[Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT, © 2024 Zentris); since then
+restructured and extended by SirRenix.
