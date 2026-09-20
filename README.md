@@ -12,7 +12,7 @@ Mainsail, energy per print job in Moonraker's history, on/off toggle.
 
 > **Status: final (v1.5.0), maintenance mode** — bugs get fixed, no new features.
 > Based on [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), heavily reworked.
-> [Why it stops here](#why-this-project-is-not-continued).
+> Home Assistant user? [You don't need this](#home-assistant-instead-of-this-bridge). [Why it stops here](#why-this-project-is-not-continued).
 
 ---
 
@@ -183,6 +183,49 @@ switching via MQTT. One container per FritzBox.
 **Out (by design):** Home Assistant discovery (HA has a native AVM integration), thermostats /
 blinds / buttons, several boxes per instance. A native Moonraker `[power]` device would be the
 proper long-term home for this — not planned here.
+
+---
+
+## Home Assistant instead of this bridge
+
+If you run Home Assistant you don't need this container: HA's native **AVM FRITZ!SmartHome** integration
+already exposes the socket as `switch.<name>` plus power / energy / voltage / current / temperature
+sensors. One automation publishes the same payload to the same topic, so the
+[Moonraker config above](#moonraker--mainsail-example) works unchanged (adjust the entity ids to yours):
+
+```yaml
+alias: Printer socket → MQTT (FritzDect2MQTT payload)
+mode: single
+triggers:
+  - trigger: time_pattern
+    seconds: "/30"
+  - trigger: state
+    entity_id: switch.printer_socket
+actions:
+  - action: mqtt.publish
+    data:
+      topic: sensor/FB/MyFritzbox/116570123456
+      retain: true
+      payload: >-
+        {"AIN": "116570123456",
+         "name": "{{ state_attr('switch.printer_socket', 'friendly_name') }}",
+         "temp": {{ states('sensor.printer_socket_temperature') | float(0) }},
+         "power": {{ states('sensor.printer_socket_power') | float(0) }},
+         "energy": {{ states('sensor.printer_socket_energy') | float(0) }},
+         "allpower": {{ states('sensor.printer_socket_energy') | float(0) }},
+         "state": "{{ states('switch.printer_socket') }}",
+         "voltage": {{ states('sensor.printer_socket_voltage') | float(0) }},
+         "current": {{ states('sensor.printer_socket_current') | float(0) }}}
+  - action: mqtt.publish
+    data:
+      topic: sensor/FB/MyFritzbox/status
+      retain: true
+      payload: online
+```
+
+For the on/off toggle without MQTT use Moonraker's `[power] type: homeassistant` with `device: switch.<name>`.
+
+---
 
 ## Why this project is not continued
 
