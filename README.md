@@ -42,8 +42,8 @@ mosquitto_pub -h <broker> -t "cmd/FB/MyFritzbox/116570123456" \
 
 ## Moonraker / Mainsail example
 
-Live values + job history via `[sensor]`, on/off toggle via `[power]`. Set `retain: true` in
-`configdata.cfg` so Mainsail shows values right after a restart.
+Live values + job history via `[sensor]`, on/off toggle via `[power]`. `retain: true` (default) lets
+Mainsail show values right after a restart.
 
 > Verified with Moonraker on a Voron (Sep 2026). The FritzBox reports a switch change with ~10 s delay,
 > so the toggle in Mainsail follows a moment later.
@@ -160,7 +160,7 @@ python FritzDect2MQTT.py           # wrap in systemd for permanent use
 | `MQTT.broker` | `MQTT_BROKER` entry in `secrets.yaml` to use (default `RASPI`) |
 | `MQTT.maintoken` / `MQTT.cmdtoken` | Base topics for state / commands |
 | `MQTT.clientId` | MQTT client id |
-| `MQTT.qos` / `MQTT.retain` | QoS (0) / retain (false) for published state |
+| `MQTT.qos` / `MQTT.retain` | QoS (0) / retain (true) for published state |
 | `logging` | Python `logging.config.dictConfig` block |
 
 Behaviour on errors: MQTT reconnects with back-off (1–60 s); a failing FritzBox connection is

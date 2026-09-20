@@ -10,7 +10,8 @@ feature-complete (maintenance mode).
 - `energy` (kWh) in the state payload; `allpower` is kept as a **deprecated alias**.
 - Availability topic `<maintoken>/<FB>/status` (`online` retained / `offline` as last will and on
   clean shutdown).
-- `MQTT.qos` and `MQTT.retain` options (defaults 0 / false = previous behaviour).
+- `MQTT.qos` and `MQTT.retain` options (defaults 0 / **true** — state is now retained so consumers get
+  the last value immediately).
 - Clean shutdown on SIGTERM/SIGINT (publishes `offline`, disconnects).
 - Docker `HEALTHCHECK` (heartbeat file written after every successful query cycle).
 - Unit tests (`tests/`), CI (ruff, pytest, Docker build) replacing the failing pylint workflow.
