@@ -45,7 +45,8 @@ mosquitto_pub -h <broker> -t "cmd/FB/MyFritzbox/116570123456" \
 Live values + job history via `[sensor]`, on/off toggle via `[power]`. Set `retain: true` in
 `configdata.cfg` so Mainsail shows values right after a restart.
 
-> Example based on the Moonraker docs — verify against your own setup.
+> Verified with Moonraker on a Voron (Sep 2026). The FritzBox reports a switch change with ~10 s delay,
+> so the toggle in Mainsail follows a moment later.
 
 ```ini
 # moonraker.conf
@@ -96,6 +97,7 @@ state_response_template:
   {% set d = payload|fromjson %}
   {d["state"]}
 query_after_command: False
+locked_while_printing: True
 ```
 
 ---
