@@ -10,10 +10,9 @@ One small container, no home automation platform required.
 Built to feed a **Voron 3D printer (Klipper / Moonraker / Mainsail)**: live socket stats in
 Mainsail, energy per print job in Moonraker's history, on/off toggle.
 
-> **Status:** feature-complete, maintenance mode. Bugs get fixed, no new features planned.
-> If you run Home Assistant you don't need this — use HA's native *AVM FRITZ!SmartHome*
-> integration and Moonraker's `[power type: homeassistant]`.
+> **Status: final (v1.5.0), maintenance mode** — bugs get fixed, no new features.
 > Based on [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), heavily reworked.
+> [Why it stops here](#why-this-project-is-not-continued).
 
 ---
 
@@ -135,6 +134,14 @@ docker logs -f fritzdect2mqtt
 | Build images on deploy | on |
 | Environment | `TIME_ZONE=Europe/Berlin` (optional, default UTC) |
 
+
+**Option C — all-in-one (no broker yet?)** — Mosquitto + bridge in one stack:
+
+```bash
+cp _secrets.yaml secrets.yaml          # FritzBox credentials; set MQTT_BROKER ip to "mosquitto"
+docker compose -f docker/compose.all-in-one.yaml up -d --build
+```
+
 ---
 
 ## Without Docker
@@ -176,6 +183,14 @@ switching via MQTT. One container per FritzBox.
 **Out (by design):** Home Assistant discovery (HA has a native AVM integration), thermostats /
 blinds / buttons, several boxes per instance. A native Moonraker `[power]` device would be the
 proper long-term home for this — not planned here.
+
+## Why this project is not continued
+
+It does exactly one thing and does it well enough. Beyond that, the ecosystem has better homes for it:
+Home Assistant has a native AVM integration, zigbee2mqtt/Tasmota/Shelly publish to MQTT natively, and the
+right place for Fritz!DECT at a 3D printer would be a native `[power type: fritzdect]` device *inside*
+Moonraker (no extra container, no bridge). The author moved to Home Assistant + Zigbee, so there is no
+personal need to keep extending this. It stays here as a small, tested bridge for the niche it serves.
 
 ## License
 

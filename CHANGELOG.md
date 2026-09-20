@@ -15,7 +15,8 @@ feature-complete (maintenance mode).
 - Clean shutdown on SIGTERM/SIGINT (publishes `offline`, disconnects).
 - Docker `HEALTHCHECK` (heartbeat file written after every successful query cycle).
 - Unit tests (`tests/`), CI (ruff, pytest, Docker build) replacing the failing pylint workflow.
-- README: Moonraker/Mainsail example config, scope, license/attribution.
+- README: Moonraker/Mainsail example config, scope, license/attribution, why the project stops here.
+- `docker/compose.all-in-one.yaml`: Mosquitto + bridge in one stack for setups without a broker.
 
 ### Fixed
 - Negative temperatures were reported as `"NA"` (`isdigit()`); signed values are now parsed.

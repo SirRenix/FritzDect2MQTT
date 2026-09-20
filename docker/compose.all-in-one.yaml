@@ -1,0 +1,48 @@
+# All-in-one: MQTT broker (Mosquitto) + FritzDect2MQTT in one stack.
+# For setups without an existing broker / home automation platform.
+#
+#   cp _secrets.yaml secrets.yaml        # FritzBox credentials; MQTT_BROKER ip = "mosquitto"
+#   docker compose -f docker/compose.all-in-one.yaml up -d --build
+#   docker compose -f docker/compose.all-in-one.yaml exec mosquitto mosquitto_sub -t 'sensor/FB/#' -v
+#
+# The broker listens on port 1883 without authentication (LAN use). To add
+# users, replace allow_anonymous with a password_file in the mosquitto config.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    command: >
+      sh -c "printf 'listener 1883\nallow_anonymous true\npersistence true\npersistence_location /mosquitto/data/\n'
+      > /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+
+  fritzdect2mqtt:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: fritzdect2mqtt:local
+    container_name: fritzdect2mqtt
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    mem_limit: 128m
+    volumes:
+      # secrets.yaml in the repository root (git-ignored), readable by UID 1000
+      - ../secrets.yaml:/opt/fritzdect2mqtt/secrets.yaml:ro
+    environment:
+      - TZ=${TIME_ZONE:-UTC}
+      - MALLOC_ARENA_MAX=2
+      - MALLOC_TRIM_THRESHOLD_=100000
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mosquitto-data:

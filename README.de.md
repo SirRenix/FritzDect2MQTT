@@ -10,10 +10,9 @@ schalten**. Ein kleiner Container, keine Home-Automation-Plattform nötig.
 Entstanden für einen **Voron-3D-Drucker (Klipper / Moonraker / Mainsail)**: Live-Werte der
 Steckdose in Mainsail, Energie pro Druckjob in Moonrakers History, Ein/Aus-Toggle.
 
-> **Status:** feature-complete, Maintenance-Modus. Bugs werden gefixt, neue Funktionen sind nicht geplant.
-> Wer Home Assistant nutzt, braucht das hier nicht — HAs native *AVM FRITZ!SmartHome*-Integration
-> plus Moonrakers `[power type: homeassistant]` reichen.
+> **Status: final (v1.5.0), Maintenance-Modus** — Bugs werden gefixt, keine neuen Funktionen.
 > Basiert auf [Zentris/FritzDectMQTT](https://github.com/Zentris/FritzDectMQTT) (MIT), stark überarbeitet.
+> [Warum hier Schluss ist](#warum-das-projekt-nicht-weitergeführt-wird).
 
 ---
 
@@ -135,6 +134,14 @@ docker logs -f fritzdect2mqtt
 | Build images on deploy | an |
 | Environment | `TIME_ZONE=Europe/Berlin` (optional, Default UTC) |
 
+
+**Variante C — All-in-one (noch kein Broker?)** — Mosquitto + Bridge in einem Stack:
+
+```bash
+cp _secrets.yaml secrets.yaml          # FritzBox-Zugangsdaten; MQTT_BROKER ip auf "mosquitto" setzen
+docker compose -f docker/compose.all-in-one.yaml up -d --build
+```
+
 ---
 
 ## Ohne Docker
@@ -177,6 +184,15 @@ Schalten per MQTT. Ein Container pro FritzBox.
 **Bewusst nicht drin:** Home-Assistant-Discovery (HA hat eine native AVM-Integration), Thermostate /
 Rollläden / Taster, mehrere Boxen pro Instanz. Ein natives Moonraker-`[power]`-Gerät wäre der
 richtige langfristige Ort dafür — hier nicht geplant.
+
+## Warum das Projekt nicht weitergeführt wird
+
+Es macht genau eine Sache, und die ausreichend gut. Für alles darüber hinaus gibt es im Ökosystem bessere
+Orte: Home Assistant hat eine native AVM-Integration, zigbee2mqtt/Tasmota/Shelly publishen von Haus aus
+nach MQTT, und der richtige Platz für Fritz!DECT am 3D-Drucker wäre ein natives `[power type: fritzdect]`
+*in* Moonraker (kein Extra-Container, keine Bridge). Der Autor ist auf Home Assistant + Zigbee umgestiegen,
+es gibt also keinen persönlichen Bedarf, hier weiterzubauen. Es bleibt als kleine, getestete Bridge für die
+Nische, die es bedient.
 
 ## Lizenz
 
